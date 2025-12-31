@@ -1,0 +1,1458 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>战役控制界面 - Fate GM Helper</title>
+    <style>
+        /* 统一的CSS变量系统 */
+        :root {
+            /* 基础色彩 */
+            --color-primary: #6c5ce7;
+            --color-primary-dark: #5b4ec9;
+            --color-primary-light: #887ef0;
+            --color-secondary: #00cec9;
+            --color-accent: #fdcb6e;
+            --color-text-dark: #2d3436;
+            --color-text-secondary: #636e72;
+            --color-background: #f9fafb;
+            --color-card: #ffffff;
+            --color-border: #e5e7eb;
+            --color-success: #00b894;
+            --color-danger: #d63031;
+            --color-warning: #fdcb6e;
+            
+            /* 圣杯战争主题渐变色彩 */
+            --gradient-primary: linear-gradient(135deg, #6c5ce7, #00cec9);
+            --gradient-secondary: linear-gradient(135deg, #a29bfe, #74b9ff);
+            --gradient-tertiary: linear-gradient(135deg, #ff7675, #fd79a8);
+            --gradient-quaternary: linear-gradient(135deg, #fdcb6e, #e17055);
+            
+            /* 阴影效果 */
+            --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.12);
+            --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.07);
+            --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.05);
+            --shadow-hover: 0 12px 25px rgba(0,0,0,0.15);
+            
+            /* 圆角 */
+            --radius-sm: 0.25rem;
+            --radius-md: 0.5rem;
+            --radius-lg: 0.75rem;
+            --radius-xl: 1rem;
+            --radius-2xl: 1.5rem;
+            
+            /* 间距 */
+            --spacing-xs: 0.25rem;
+            --spacing-sm: 0.5rem;
+            --spacing-md: 1rem;
+            --spacing-lg: 1.5rem;
+            --spacing-xl: 2rem;
+            --spacing-2xl: 3rem;
+            
+            /* 过渡效果 */
+            --transition-fast: all 0.15s ease;
+            --transition-normal: all 0.3s ease;
+            --transition-slow: all 0.5s ease;
+        }
+        
+        /* 全局重置 */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        /* 基础元素样式 */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Microsoft YaHei', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--color-background);
+            color: var(--color-text-dark);
+            line-height: 1.6;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        /* 容器样式 */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: var(--spacing-xl);
+            flex: 1;
+        }
+        
+        /* 标题样式增强 */
+        h1 {
+            margin: 0;
+            color: var(--color-text-dark);
+            font-size: 2rem;
+            font-weight: 700;
+            text-align: center;
+            line-height: 1.3;
+            background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: var(--spacing-xl);
+        }
+        
+        h2 {
+            color: var(--color-text-dark);
+            border-bottom: 2px solid transparent;
+            border-image: var(--gradient-primary);
+            border-image-slice: 1;
+            padding-bottom: 0.75rem;
+            margin-top: var(--spacing-xl);
+            margin-bottom: var(--spacing-lg);
+            font-size: 1.5rem;
+            font-weight: 600;
+            background: linear-gradient(to right, var(--color-primary), transparent);
+            background-size: 100% 2px;
+            background-position: 0 100%;
+            background-repeat: no-repeat;
+        }
+        
+        h3 {
+            font-size: 1.25rem;
+            margin-bottom: var(--spacing-md);
+            margin-top: var(--spacing-lg);
+            border-bottom: 2px solid var(--color-primary);
+            padding-bottom: var(--spacing-xs);
+            display: inline-block;
+            color: var(--color-text-dark);
+        }
+        
+        /* ===== 顶部导航栏：全站统一 ===== */
+        .header {
+            background: var(--gradient-primary);
+            color: white;
+            padding: var(--spacing-md) var(--spacing-lg);
+            box-shadow: var(--shadow-md);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+        
+        .header-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: var(--spacing-md);
+        }
+        
+        .header-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: white;
+            margin: 0;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+        
+        .nav {
+            list-style: none;
+            display: flex;
+            gap: var(--spacing-md);
+            margin: 0;
+            padding: 0;
+            flex-wrap: wrap;
+        }
+        
+        .nav-link {
+            color: white;
+            text-decoration: none;
+            padding: var(--spacing-sm) var(--spacing-md);
+            border-radius: var(--radius-md);
+            font-weight: 500;
+            transition: all var(--transition-normal);
+            opacity: 0.9;
+        }
+        
+        .nav-link:hover {
+            opacity: 1;
+            background-color: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+        }
+        
+        .nav-link.active {
+            background-color: rgba(255, 255, 255, 0.3);
+            font-weight: 600;
+        }
+        
+        /* 卡片组件 */
+        .card {
+            background-color: var(--color-card);
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-md);
+            margin-bottom: 2rem;
+            overflow: hidden;
+            border: 1px solid var(--color-border);
+        }
+        
+        .card-header {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--color-border);
+            background-color: var(--color-background);
+        }
+        
+        .card-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--color-text-dark);
+            margin: 0;
+        }
+        
+        .card-body {
+            padding: 1.5rem;
+        }
+        
+        /* 进度条样式 */
+        .progress-container {
+            background-color: var(--color-card);
+            padding: var(--spacing-lg);
+            border-radius: var(--radius-lg);
+            margin-bottom: var(--spacing-xl);
+            box-shadow: var(--shadow-md);
+            border: 1px solid var(--color-border);
+        }
+        
+        .progress-bar {
+            height: 1.5rem;
+            background-color: #f0f0f0;
+            border-radius: 9999px;
+            overflow: hidden;
+            margin: 1rem 0;
+            position: relative;
+            box-shadow: var(--shadow-sm) inset;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--color-primary), var(--color-secondary));
+            border-radius: 9999px;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding-right: 0.5rem;
+            transition: width 0.5s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .progress-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            animation: shimmer 2s infinite;
+        }
+        
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+        
+        .progress-text {
+            color: white;
+            font-weight: 500;
+            font-size: 0.875rem;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+            position: relative;
+            z-index: 1;
+        }
+        
+        .progress-info {
+            display: flex;
+            justify-content: space-between;
+            color: var(--color-text-secondary);
+            font-size: 0.875rem;
+        }
+        
+        /* 表格容器样式 */
+        .table-container {
+            background-color: var(--color-card);
+            padding: var(--spacing-lg);
+            border-radius: var(--radius-lg);
+            margin-bottom: var(--spacing-xl);
+            box-shadow: var(--shadow-md);
+            border: 1px solid var(--color-border);
+            overflow-x: auto;
+        }
+        
+        /* 表格样式 */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+        
+        th {
+            background-color: #f8f9fa;
+            color: var(--color-text-dark);
+            text-align: left;
+            padding: 0.75rem 1rem;
+            border-bottom: 2px solid var(--color-border);
+            font-weight: 600;
+            font-size: 0.875rem;
+        }
+        
+        td {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--color-border);
+            color: var(--color-text-dark);
+            font-size: 0.875rem;
+            transition: background-color var(--transition-fast);
+        }
+        
+        tr:hover {
+            background-color: rgba(0, 0, 0, 0.02);
+        }
+        
+        /* 按钮样式 */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: var(--spacing-sm) var(--spacing-lg);
+            border: 1px solid transparent;
+            border-radius: var(--radius-md);
+            font-weight: 500;
+            text-align: center;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all var(--transition-normal);
+            font-size: 1rem;
+            position: relative;
+            overflow: hidden;
+            min-width: 120px;
+        }
+        
+        .btn-primary {
+            background-color: var(--color-primary);
+            color: white;
+            box-shadow: 0 4px 10px rgba(108, 92, 231, 0.3);
+        }
+        
+        .btn-primary:hover {
+            background-color: var(--color-primary-dark);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(108, 92, 231, 0.4);
+        }
+        
+        .btn-secondary {
+            background-color: #f0f0f0;
+            color: var(--color-text-dark);
+            border-color: var(--color-border);
+        }
+        
+        .btn-secondary:hover {
+            background-color: #e0e0e0;
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-sm);
+        }
+        
+        /* 战斗控制特定按钮样式 */
+        .control-actions {
+            display: flex;
+            justify-content: center;
+            gap: var(--spacing-md);
+            margin: var(--spacing-xl) 0;
+            flex-wrap: wrap;
+        }
+        
+        .close-actions-btn {
+            background-color: var(--color-warning);
+            color: white;
+            box-shadow: 0 4px 10px rgba(253, 203, 110, 0.3);
+        }
+        
+        .close-actions-btn:hover {
+            background-color: #e6b649;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(253, 203, 110, 0.4);
+        }
+        
+        .next-turn-btn {
+            background-color: var(--color-primary);
+            color: white;
+            box-shadow: 0 4px 10px rgba(108, 92, 231, 0.3);
+        }
+        
+        .next-turn-btn:hover {
+            background-color: var(--color-primary-dark);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(108, 92, 231, 0.4);
+        }
+        
+        /* 魔力条样式 */
+        .mana-bar {
+            width: 100px;
+            height: 8px;
+            background-color: #f0f0f0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 5px 0;
+            box-shadow: var(--shadow-sm) inset;
+        }
+        
+        .mana-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--color-secondary), var(--color-primary));
+            border-radius: 4px;
+            transition: width var(--transition-normal);
+        }
+        
+        /* 令咒样式 */
+        .command-seals {
+            display: flex;
+            gap: 5px;
+        }
+        
+        .seal {
+            width: 16px;
+            height: 16px;
+            background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
+            border-radius: 50%;
+            box-shadow: 0 0 5px rgba(108, 92, 231, 0.3);
+            transition: transform var(--transition-fast);
+        }
+        
+        .seal:hover {
+            transform: scale(1.1);
+            box-shadow: 0 0 8px rgba(108, 92, 231, 0.5);
+        }
+        
+        .seal-used {
+            width: 16px;
+            height: 16px;
+            background-color: var(--color-border);
+            border-radius: 50%;
+            opacity: 0.6;
+        }
+        
+        /* 圣杯战争表格样式 */
+        .holy-grail-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.875rem;
+            margin-top: var(--spacing-lg);
+        }
+        
+        .holy-grail-table th,
+        .holy-grail-table td {
+            padding: 8px;
+            border: 1px solid var(--color-border);
+            text-align: center;
+            min-width: 80px;
+            transition: background-color var(--transition-fast);
+        }
+        
+        .holy-grail-table th {
+            font-weight: bold;
+            background-color: #ff6b6b;
+            color: white;
+            position: sticky;
+            top: 0;
+            z-index: 5;
+        }
+        
+        .holy-grail-table tr:nth-child(1) th {
+            background-color: #ff6b6b;
+        }
+        
+        .holy-grail-table tr:nth-child(2) th {
+            background-color: #ff9f43;
+        }
+        
+        .holy-grail-table .master-row,
+        .holy-grail-table .servant-row {
+            background-color: #ffeaa7;
+        }
+        
+        .holy-grail-table .current-action-row,
+        .holy-grail-table .cost-row,
+        .holy-grail-table .mana-row,
+        .holy-grail-table .status-row,
+        .holy-grail-table .transfer-row {
+            background-color: #fdcb6e;
+        }
+        
+        .holy-grail-table a {
+            color: var(--color-primary);
+            text-decoration: underline;
+            font-weight: 500;
+        }
+        
+        .holy-grail-table a:hover {
+            color: var(--color-primary-dark);
+        }
+        
+        .holy-grail-table .low-mana {
+            color: var(--color-danger);
+            font-weight: bold;
+        }
+        
+        .holy-grail-table .normal-mana {
+            color: var(--color-success);
+        }
+        
+        /* 响应式设计 */
+        @media (max-width: 992px) {
+            .header-content {
+                flex-direction: column;
+                gap: var(--spacing-md);
+                text-align: center;
+                height: auto;
+                padding: var(--spacing-md);
+            }
+            
+            .nav {
+                justify-content: center;
+                flex-wrap: wrap;
+            }
+            
+            .nav-link {
+                padding: var(--spacing-xs) var(--spacing-md);
+                font-size: 0.875rem;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                padding: var(--spacing-md);
+            }
+            
+            h1 {
+                font-size: 1.75rem;
+            }
+            
+            h2 {
+                font-size: 1.25rem;
+            }
+            
+            .control-actions {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .btn {
+                width: 100%;
+                max-width: 300px;
+            }
+            
+            .table-container,
+            .progress-container {
+                padding: var(--spacing-md);
+            }
+            
+            th, td {
+                padding: 0.5rem;
+                font-size: 0.875rem;
+            }
+        }
+        
+        /* 辅助类 */
+        .text-center { text-align: center; }
+        .text-left { text-align: left; }
+        .text-right { text-align: right; }
+        
+        .mb-0 { margin-bottom: 0; }
+        .mb-1 { margin-bottom: var(--spacing-xs); }
+        .mb-2 { margin-bottom: var(--spacing-sm); }
+        .mb-3 { margin-bottom: var(--spacing-md); }
+        .mb-4 { margin-bottom: var(--spacing-lg); }
+        .mb-5 { margin-bottom: var(--spacing-xl); }
+        
+        .mt-0 { margin-top: 0; }
+        .mt-1 { margin-top: var(--spacing-xs); }
+        .mt-2 { margin-top: var(--spacing-sm); }
+        .mt-3 { margin-top: var(--spacing-md); }
+        .mt-4 { margin-top: var(--spacing-lg); }
+        .mt-5 { margin-top: var(--spacing-xl); }
+        
+        .d-flex { display: flex; }
+        .flex-wrap { flex-wrap: wrap; }
+        .gap-sm { gap: var(--spacing-sm); }
+        .gap-md { gap: var(--spacing-md); }
+        .gap-lg { gap: var(--spacing-lg); }
+        
+        .justify-between { justify-content: space-between; }
+        .align-center { align-items: center; }
+        
+        /* 页脚样式 */
+        .footer {
+            background-color: var(--color-card);
+            padding: var(--spacing-xl) var(--spacing-lg);
+            margin-top: var(--spacing-2xl);
+            border-top: 1px solid var(--color-border);
+            text-align: center;
+            box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
+        }
+        
+        .footer-text {
+            color: var(--color-text-secondary);
+            font-size: 0.875rem;
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+    <!-- 标题栏 - 参考test_nav.html风格 -->
+    <header class="header">
+        <div class="header-content">
+            <h1 class="header-title">Fate GM助手</h1>
+            <nav>
+                <ul class="nav">
+                    <li><a href="index.html" class="nav-link">首页</a></li>
+                    <li><a href="BattleControl.html" class="nav-link active">战斗控制</a></li>
+                    <li><a href="BattleSheet.html" class="nav-link">战斗表格</a></li>
+                    <li><a href="CharacterCardUpload.html" class="nav-link">角色卡上传</a></li>
+                    <li><a href="DashboardCampaign.html" class="nav-link">战役仪表板</a></li>
+                    <li><a href="SkillRecord.html" class="nav-link">技能记录</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+    
+    <!-- 主内容区域 -->
+    <main class="container">
+        <!-- 页面标题区域 -->
+        <div class="card">
+            <div class="card-body text-center">
+                <h1 class="mb-3">圣杯战争战役控制界面</h1>
+                <p class="text-secondary">战役名称：冬木市第五次圣杯战争 | 当前回合：第3回合 | 总回合数：28回合（14天，每天2回合） | 圣杯魔力量：80% <small><i>(随玩家退场增加)</i></small></p>
+            </div>
+        </div>
+        
+        <!-- 战斗控制区域 -->
+        <section class="card">
+            <div class="card-header">
+                <h2 class="card-title">战斗控制</h2>
+            </div>
+            <div class="card-body">
+                <p>Fate GM助手 - 战斗流程管理</p>
+                
+                <!-- 控制按钮 -->
+                <div class="control-actions">
+                    <button class="btn close-actions-btn" onclick="closeActions()">关闭行动提交</button>
+                    <button class="btn next-turn-btn" onclick="nextTurn()">进入下一回合</button>
+                </div>
+            </div>
+        </section>
+        
+        <!-- 战役进度条 -->
+        <div class="progress-container">
+            <h3>战役进度</h3>
+            <div class="progress-bar">
+                <div class="progress-fill" style="width: 11%;">
+                    <span class="progress-text">11%</span>
+                </div>
+            </div>
+            <div class="progress-info">
+                <span>第3回合 / 共28回合（14天，每天2回合）</span>
+                <span>已完成：11%</span>
+            </div>
+        </div>
+        
+        <!-- 当前回合信息表 -->
+        <div class="table-container">
+            <h2>当前回合信息表</h2>
+            <table class="holy-grail-table">
+                <thead>
+                    <tr>
+                        <th>字段</th>
+                        <th>弓</th>
+                        <th>杀</th>
+                        <th>骑</th>
+                        <th>剑</th>
+                        <th>例</th>
+                        <th>术</th>
+                        <th>狂</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- 阶职 -->
+                    <tr>
+                        <td>阶职</td>
+                        <td>弓</td>
+                        <td>杀</td>
+                        <td>骑</td>
+                        <td>剑</td>
+                        <td>例</td>
+                        <td>术</td>
+                        <td>狂</td>
+                    </tr>
+                    
+                    <!-- 从者真名 -->
+                    <tr>
+                        <td>从者真名</td>
+                        <td>赵云</td>
+                        <td>米斯特拉斯梅特利</td>
+                        <td>莫拉卿</td>
+                        <td>朔景镜</td>
+                        <td>朗昂人</td>
+                        <td>天魔</td>
+                        <td>男宾</td>
+                    </tr>
+                    
+                    <!-- 从者阵营 -->
+                    <tr>
+                        <td>从者阵营</td>
+                        <td>秩序·善</td>
+                        <td>混沌·中立</td>
+                        <td>守序·善</td>
+                        <td>混沌·中庸</td>
+                        <td>秩序·善</td>
+                        <td>守序·善</td>
+                        <td>中立·善</td>
+                    </tr>
+                    
+                    <!-- 御主真名 -->
+                    <tr>
+                        <td>御主真名</td>
+                        <td>秩序·晋</td>
+                        <td>秩序·瑟</td>
+                        <td>守序·晋</td>
+                        <td>秩序·中立</td>
+                        <td>混沌·善/混沌·中</td>
+                        <td>守序·中</td>
+                        <td>秩序·恶</td>
+                    </tr>
+                    
+                    <!-- 御主阵营 -->
+                    <tr>
+                        <td>御主阵营</td>
+                        <td>秩序·善</td>
+                        <td>混沌·中立</td>
+                        <td>守序·善</td>
+                        <td>混沌·中庸</td>
+                        <td>秩序·善</td>
+                        <td>守序·善</td>
+                        <td>中立·善</td>
+                    </tr>
+                    
+                    <!-- 从者灵脉 -->
+                    <tr>
+                        <td>从者灵脉</td>
+                        <td>山谷合阵</td>
+                        <td>中央广场</td>
+                        <td>庄口铺面</td>
+                        <td>外栈温泉</td>
+                        <td>中央广场</td>
+                        <td>英灵墓地</td>
+                        <td>嗜血战场</td>
+                    </tr>
+                    
+                    <!-- 御主灵脉 -->
+                    <tr>
+                        <td>御主灵脉</td>
+                        <td>山谷合阵</td>
+                        <td>中央广场</td>
+                        <td>庄口铺面</td>
+                        <td>外栈温泉</td>
+                        <td>庄口铺面</td>
+                        <td>英灵墓地</td>
+                        <td>嗜血战场</td>
+                    </tr>
+                    
+                    <!-- 从者简称 -->
+                    <tr>
+                        <td>从者简称</td>
+                        <td>东南庭</td>
+                        <td>饕</td>
+                        <td>大环辩</td>
+                        <td>光影相生</td>
+                        <td>方块/黑方块</td>
+                        <td>强者</td>
+                        <td>须麟</td>
+                    </tr>
+                    
+                    <!-- 御主简称 -->
+                    <tr>
+                        <td>御主简称</td>
+                        <td>草生·郑六</td>
+                        <td>阿尔卡多</td>
+                        <td>疯老魔鸢战斗形态</td>
+                        <td>海天同行</td>
+                        <td>木子</td>
+                        <td>通灵之人</td>
+                        <td>重蓝</td>
+                    </tr>
+                    
+                    <!-- 当前从者日耗 -->
+                    <tr>
+                        <td>当前从者日耗</td>
+                        <td class="low-mana">35（等级）+10（高贵）</td>
+                        <td>35（等级）+10（不雕花）</td>
+                        <td>35（等级）+30（本能）+15（贞洁）</td>
+                        <td>35（等级）</td>
+                        <td>25（等级）/35（等级）×10（本能）</td>
+                        <td>等级+30（疾风）+10（不贞）+46（颠倒）+20（爆红）+10（暴走）+25（狂化）</td>
+                        <td></td>
+                    </tr>
+                    
+                    <!-- 当前御主日耗 -->
+                    <tr>
+                        <td>当前御主日耗</td>
+                        <td>0</td>
+                        <td>10（暴走）</td>
+                        <td>0</td>
+                        <td>0</td>
+                        <td>0</td>
+                        <td>0</td>
+                        <td>0</td>
+                    </tr>
+                    
+                    <!-- 当前从者魔力 -->
+                    <tr>
+                        <td>当前从者魔力</td>
+                        <td class="low-mana">-35</td>
+                        <td class="normal-mana">15</td>
+                        <td class="normal-mana">50</td>
+                        <td class="normal-mana">50</td>
+                        <td class="normal-mana">50</td>
+                        <td class="low-mana">-35</td>
+                        <td class="low-mana">-5</td>
+                    </tr>
+                    
+                    <!-- 当前御主魔力 -->
+                    <tr>
+                        <td>当前御主魔力</td>
+                        <td>0</td>
+                        <td>50</td>
+                        <td>40</td>
+                        <td>20</td>
+                        <td>40</td>
+                        <td>0</td>
+                        <td>20</td>
+                    </tr>
+                    
+                    <!-- 当前从者魔力上限 -->
+                    <tr>
+                        <td>当前从者魔力上限</td>
+                        <td>300</td>
+                        <td>150</td>
+                        <td>150</td>
+                        <td>150</td>
+                        <td>150</td>
+                        <td>140</td>
+                        <td>150</td>
+                    </tr>
+                    
+                    <!-- 当前御主魔力上限 -->
+                    <tr>
+                        <td>当前御主魔力上限</td>
+                        <td>60</td>
+                        <td>50</td>
+                        <td>40</td>
+                        <td>40</td>
+                        <td>40</td>
+                        <td>45</td>
+                        <td>20</td>
+                    </tr>
+                    
+                    <!-- 当前御主供魔 -->
+                    <tr>
+                        <td>当前御主供魔</td>
+                        <td>0</td>
+                        <td>0</td>
+                        <td>0</td>
+                        <td>0</td>
+                        <td>0</td>
+                        <td>0</td>
+                        <td>0</td>
+                    </tr>
+                    
+                    <!-- 当前礼装 -->
+                    <tr>
+                        <td>当前礼装</td>
+                        <td>宝石吊星</td>
+                        <td></td>
+                        <td>水银剑，白鸽</td>
+                        <td>仿流霞镜，仿臣书</td>
+                        <td>契约书，宝石吊星</td>
+                        <td>可制作：契约书，月灵</td>
+                        <td>契约书</td>
+                    </tr>
+                    
+                    <!-- 当前工房/结界 -->
+                    <tr>
+                        <td>当前工房/结界</td>
+                        <td>资源蒸盘 腐蚀/2</td>
+                        <td></td>
+                        <td>炼金釜盘 自动</td>
+                        <td>七星 资源蒸盘 腐蚀/2</td>
+                        <td></td>
+                        <td>活海</td>
+                        <td></td>
+                    </tr>
+                    
+                    <!-- 当前令咒 -->
+                    <tr>
+                        <td>当前令咒</td>
+                        <td>3</td>
+                        <td>3</td>
+                        <td>3</td>
+                        <td>3</td>
+                        <td>3</td>
+                        <td>3</td>
+                        <td>3</td>
+                    </tr>
+                    <!-- 状态 -->
+                    <tr>
+                        <td>状态</td>
+                        <td></td>
+                        <td>王者2，人祸，伪造体</td>
+                        <td></td>
+                        <td>英雄</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    
+                    <!-- 回转 -->
+                    <tr>
+                        <td>回转</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    
+                    <!-- 特殊 -->
+                    <tr>
+                        <td>特殊</td>
+                        <td></td>
+                        <td>同盟《我老婆有战斗形态》</td>
+                        <td>同盟《阿卡多》</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- 行动排序表格 -->
+        <div class="table-container">
+            <h2>当前回合行动顺序</h2>
+            <table id="actions-order-table">
+                <thead>
+                    <tr>
+                        <th>行动类别</th>
+                        <th>剑</th>
+                        <th>弓</th>
+                        <th>枪</th>
+                        <th>骑</th>
+                        <th>术</th>
+                        <th>杀</th>
+                        <th>狂</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- 机动行动 -->
+                    <tr>
+                        <td>机动</td>
+                        <td>红方 (Saber) - 从者：从远坂家移动至冬木大桥，寻找其他从者</td>
+                        <td></td>
+                        <td></td>
+                        <td>绿方 (Rider) - 从者：使用骑乘技能快速移动至柳洞寺周边</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    
+                    <!-- 魂食行动 -->
+                    <tr>
+                        <td>魂食</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td>黄方 (Caster) - 从者：吸收周围灵体魔力以恢复自身魔力</td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    
+                    <!-- 干涉行动 -->
+                    <tr>
+                        <td>干涉</td>
+                        <td></td>
+                        <td>蓝方 (Archer) - 御主：使用令咒命令Archer执行远程狙击任务</td>
+                        <td>黑方 (Lancer) - 御主：使用令咒提升Lancer的敏捷属性</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    
+                    <!-- 解放行动 -->
+                    <tr>
+                        <td>解放</td>
+                        <td>红方 (Saber) - 从者：解放宝具Excalibur，对目标区域进行攻击</td>
+                        <td>蓝方 (Archer) - 从者：解放宝具 Unlimited Blade Works，展开固有结界</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    
+                    <!-- 制造行动 -->
+                    <tr>
+                        <td>制造</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td>黄方 (Caster) - 从者：制造使魔用于侦查和防御</td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    
+                    <!-- 信息行动 -->
+                    <tr>
+                        <td>信息</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td>绿方 (Rider) - 御主：查阅古籍获取关于圣杯战争的情报</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    
+                    <!-- 休整行动 -->
+                    <tr>
+                        <td>休整</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td>黄方 (Caster) - 御主：在隐匿处冥想恢复魔力</td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    
+                    <!-- 摧毁工房行动 -->
+                    <tr>
+                        <td>摧毁工房</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- 行动记录表格 -->
+        <div class="table-container">
+            <h2>行动记录</h2>
+            <table id="action-record-table">
+                <thead>
+                    <tr>
+                        <th>回合数</th>
+                        <th>剑阶</th>
+                        <th>弓阶</th>
+                        <th>枪阶</th>
+                        <th>骑阶</th>
+                        <th>术阶</th>
+                        <th>杀阶</th>
+                        <th>狂阶</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- 跳伞 -->
+                    <tr>
+                        <td>跳伞</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    
+                    <!-- 第一天昼行动 -->
+                    <tr>
+                        <td>第一天昼行动</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    
+                    <!-- 第一天夜行动 -->
+                    <tr>
+                        <td>第一天夜行动</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    
+                    <!-- 第二天昼行动 -->
+                    <tr>
+                        <td>第二天昼行动</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    
+                    <!-- 第二天夜行动 -->
+                    <tr>
+                        <td>第二天夜行动</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    
+                    <!-- 第三天昼行动 -->
+                    <tr>
+                        <td>第三天昼行动</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    
+                    <!-- 第三天夜行动 -->
+                    <tr>
+                        <td>第三天夜行动</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    
+                    <!-- 第四天昼行动 -->
+                    <tr>
+                        <td>第四天昼行动</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    
+                    <!-- 第四天夜行动 -->
+                    <tr>
+                        <td>第四天夜行动</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    
+                    <!-- 第五天昼行动 -->
+                    <tr>
+                        <td>第五天昼行动</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    
+                    <!-- 第五天夜行动 -->
+                    <tr>
+                        <td>第五天夜行动</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    
+                    <!-- 第六天昼行动 -->
+                    <tr>
+                        <td>第六天昼行动</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    
+                    <!-- 第六天夜行动 -->
+                    <tr>
+                        <td>第六天夜行动</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    
+                    <!-- 第七天昼行动 -->
+                    <tr>
+                        <td>第七天昼行动</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    
+                    <!-- 第七天夜行动 -->
+                    <tr>
+                        <td>第七天夜行动</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    
+                    <!-- 第八天昼行动 -->
+                    <tr>
+                        <td>第八天昼行动</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    
+                    <!-- 第八天夜行动 -->
+                    <tr>
+                        <td>第八天夜行动</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    
+                    <!-- 第九天昼行动 -->
+                    <tr>
+                        <td>第九天昼行动</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    
+                    <!-- 第九天夜行动 -->
+                    <tr>
+                        <td>第九天夜行动</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    
+                    <!-- 第十天昼行动 -->
+                    <tr>
+                        <td>第十天昼行动</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    
+                    <!-- 第十天夜行动 -->
+                    <tr>
+                        <td>第十天夜行动</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    
+                    <!-- 第十一天昼行动 -->
+                    <tr>
+                        <td>第十一天昼行动</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    
+                    <!-- 第十一天夜行动 -->
+                    <tr>
+                        <td>第十一天夜行动</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    
+                    <!-- 第十二天昼行动 -->
+                    <tr>
+                        <td>第十二天昼行动</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    
+                    <!-- 第十二天夜行动 -->
+                    <tr>
+                        <td>第十二天夜行动</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    
+                    <!-- 第十三天昼行动 -->
+                    <tr>
+                        <td>第十三天昼行动</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    
+                    <!-- 第十三天夜行动 -->
+                    <tr>
+                        <td>第十三天夜行动</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    
+                    <!-- 第十四天昼行动 -->
+                    <tr>
+                        <td>第十四天昼行动</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    
+                    <!-- 第十四天夜行动 -->
+                    <tr>
+                        <td>第十四天夜行动</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </main>
+    
+    <!-- 页脚 -->
+    <footer class="footer">
+        <div class="container">
+            <p class="footer-text">© 2023 Fate GM Helper - 圣杯战争战役管理系统</p>
+        </div>
+    </footer>
+
+    <script>
+        // 控制按钮的简单交互逻辑
+        function closeActions() {
+            alert('已关闭行动提交！所有队伍将无法再提交新的行动。');
+        }
+        
+        function nextTurn() {
+            if (confirm('确定要进入下一回合吗？此操作不可撤销。')) {
+                alert('已进入下一回合！');
+                // 在实际应用中，这里会触发后端API调用，更新游戏状态
+            }
+        }
+        
+        // 可以添加表格排序等功能的简单实现
+        document.addEventListener('DOMContentLoaded', function() {
+            // 这里可以添加更多交互逻辑
+        });
+    </script>
+</body>
+</html>

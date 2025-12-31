@@ -1,0 +1,17 @@
+{
+  "Providers": [
+    {
+      "name": "siliconflow",
+      "api_base_url": "https://api.siliconflow.cn/v1/chat/completions",
+      "api_key": "sk-hxhfrzuidkisnwxltgpggiejtedujnbevhvgarzmdtirozpa",
+      "models": ["Qwen/Qwen3-Coder-30B-A3B-Instruct"]
+    }
+  ],
+  "Router": {
+    "default": "siliconflow,Qwen/Qwen3-Coder-30B-A3B-Instruct",
+    "background": "siliconflow,Qwen/Qwen3-Coder-30B-A3B-Instruct",
+    "think": "siliconflow,Qwen/Qwen3-Coder-30B-A3B-Instruct",
+    "longContext": "siliconflow,Qwen/Qwen3-Coder-30B-A3B-Instruct",
+    "webSearch": "siliconflow,Qwen/Qwen3-Coder-30B-A3B-Instruct"
+  }
+}

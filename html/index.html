@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fate GM助手</title>
+    <style>
+        /* 统一的CSS变量系统 */
+        :root {
+            /* 基础色彩 */
+            --color-primary: #6c5ce7;
+            --color-primary-light: #a29bfe;
+            --color-primary-dark: #5f3dc4;
+            --color-secondary: #00cec9;
+            --color-secondary-light: #81ecec;
+            --color-secondary-dark: #00838f;
+            --color-accent: #fdcb6e;
+            --color-accent-light: #ffeaa7;
+            --color-accent-dark: #e17055;
+            
+            /* 文本色彩 */
+            --color-text-primary: #2d3436;
+            --color-text-secondary: #636e72;
+            --color-text-tertiary: #b2bec3;
+            
+            /* 背景色彩 */
+            --color-bg-primary: #ffffff;
+            --color-bg-secondary: #f8f9fa;
+            --color-bg-tertiary: #e9ecef;
+            
+            /* 功能色彩 */
+            --color-success: #00b894;
+            --color-warning: #fdcb6e;
+            --color-danger: #d63031;
+            --color-info: #0984e3;
+            
+            /* 渐变色彩 */
+            --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --gradient-secondary: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            --gradient-tertiary: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            --gradient-accent: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+            
+            /* 边框色彩 */
+            --color-border: #dee2e6;
+            --color-border-light: #f1f3f4;
+            --color-border-dark: #adb5bd;
+            
+            /* 阴影效果 */
+            --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.05);
+            --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.15);
+            --shadow-xl: 0 16px 32px rgba(0, 0, 0, 0.2);
+            --shadow-hover: 0 12px 25px rgba(0,0,0,0.15);
+            
+            /* 圆角效果 */
+            --radius-sm: 0.25rem;
+            --radius-md: 0.5rem;
+            --radius-lg: 0.75rem;
+            --radius-xl: 1rem;
+            --radius-full: 9999px;
+            
+            /* 间距系统 */
+            --spacing-xs: 0.25rem;
+            --spacing-sm: 0.5rem;
+            --spacing-md: 1rem;
+            --spacing-lg: 1.5rem;
+            --spacing-xl: 2rem;
+            --spacing-2xl: 3rem;
+            
+            /* 过渡效果 */
+            --transition-fast: 0.15s ease;
+            --transition-normal: 0.3s ease;
+            --transition-slow: 0.5s ease;
+        }
+        
+        /* 全局重置 */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        /* 基础元素样式 */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Microsoft YaHei', sans-serif;
+            background-color: var(--color-bg-secondary);
+            color: var(--color-text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        /* 容器样式 */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 var(--spacing-lg);
+            flex: 1;
+        }
+        
+        /* 标题样式 */
+        h1, h2, h3, h4, h5, h6 {
+            margin-bottom: var(--spacing-md);
+            font-weight: 700;
+            line-height: 1.2;
+        }
+        
+        h1 {
+            font-size: 2rem;
+            color: var(--color-text-primary);
+        }
+        
+        h2 {
+            font-size: 1.75rem;
+            color: var(--color-text-primary);
+        }
+        
+        h3 {
+            font-size: 1.5rem;
+            color: var(--color-text-primary);
+        }
+        
+        /* ===== 顶部导航栏：全站统一 ===== */
+        .header {
+            background: var(--gradient-primary);
+            color: white;
+            padding: var(--spacing-md) var(--spacing-lg);
+            box-shadow: var(--shadow-md);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+        
+        .header-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: var(--spacing-md);
+        }
+        
+        .header-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: white;
+            margin: 0;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+        
+        .nav {
+            list-style: none;
+            display: flex;
+            gap: var(--spacing-md);
+            margin: 0;
+            padding: 0;
+            flex-wrap: wrap;
+        }
+        
+        .nav-link {
+            color: white;
+            text-decoration: none;
+            padding: var(--spacing-sm) var(--spacing-md);
+            border-radius: var(--radius-md);
+            font-weight: 500;
+            transition: all var(--transition-normal);
+            opacity: 0.9;
+        }
+        
+        .nav-link:hover {
+            opacity: 1;
+            background-color: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+        }
+        
+        .nav-link.active {
+            background-color: rgba(255, 255, 255, 0.3);
+            font-weight: 600;
+        }
+        
+        /* 英雄标题区域 */
+        .hero-header {
+            background: var(--gradient-primary);
+            color: white;
+            padding: var(--spacing-2xl) 0;
+            text-align: center;
+            margin-bottom: var(--spacing-2xl);
+            box-shadow: var(--shadow-lg);
+        }
+        
+        .hero-title {
+            margin: 0;
+            font-size: 3rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            margin-bottom: var(--spacing-md);
+            font-weight: 700;
+        }
+        
+        .hero-subtitle {
+            margin: 0;
+            font-size: 1.2rem;
+            opacity: 0.9;
+            max-width: 800px;
+            margin: 0 auto;
+            font-weight: 500;
+        }
+        
+        /* 导航卡片容器 */
+        .nav-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: var(--spacing-xl);
+            margin-bottom: var(--spacing-2xl);
+        }
+        
+        /* 导航卡片样式 */
+        .nav-card {
+            background-color: var(--color-card);
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-md);
+            margin-bottom: 2rem;
+            overflow: hidden;
+            border: 1px solid var(--color-border);
+            padding: var(--spacing-xl);
+            text-align: center;
+            transition: transform var(--transition-normal), box-shadow var(--transition-normal);
+            position: relative;
+            color: var(--color-text-dark);
+        }
+        
+        .nav-card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-lg);
+        }
+        
+        .nav-card h2 {
+            margin-top: 0;
+            margin-bottom: var(--spacing-md);
+            font-size: 1.5rem;
+            color: var(--color-text-dark);
+            font-weight: 600;
+            border-bottom: 2px solid transparent;
+            border-image: var(--gradient-primary);
+            border-image-slice: 1;
+            padding-bottom: 0.75rem;
+        }
+        
+        .nav-card p {
+            color: var(--color-text-secondary);
+            margin-bottom: var(--spacing-lg);
+            font-size: 1.05rem;
+        }
+        
+        .card-icon {
+            font-size: 3rem;
+            margin-bottom: var(--spacing-lg);
+            opacity: 0.8;
+            transition: transform var(--transition-normal);
+            background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .nav-card:hover .card-icon {
+            transform: scale(1.1);
+        }
+        
+        .nav-card a {
+            display: inline-block;
+            background: var(--gradient-primary);
+            color: white;
+            padding: var(--spacing-sm) var(--spacing-xl);
+            text-decoration: none;
+            border-radius: var(--radius-md);
+            font-size: 1.1rem;
+            font-weight: bold;
+            transition: all var(--transition-normal);
+            border: none;
+        }
+        
+        .nav-card a:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+        
+        /* 卡片主题颜色 */
+        .card-battle {
+            border-left: 4px solid var(--color-danger);
+        }
+        
+        .card-sheet {
+            border-left: 4px solid var(--color-info);
+        }
+        
+        .card-character {
+            border-left: 4px solid var(--color-success);
+        }
+        
+        .card-dashboard {
+            border-left: 4px solid var(--color-primary);
+        }
+        
+        .card-skill {
+            border-left: 4px solid var(--color-warning);
+        }
+        
+        /* 页脚样式 */
+        .footer {
+            background-color: var(--color-bg-primary);
+            padding: var(--spacing-xl) var(--spacing-lg);
+            margin-top: var(--spacing-2xl);
+            border-top: 1px solid var(--color-border);
+            text-align: center;
+            box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
+        }
+        
+        .footer-text {
+            color: var(--color-text-tertiary);
+            font-size: 0.875rem;
+            margin: 0;
+        }
+        
+        /* 响应式设计 */
+        @media (max-width: 992px) {
+            .nav-cards {
+                grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+                gap: var(--spacing-lg);
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                padding: var(--spacing-md);
+            }
+            
+            h1 {
+                font-size: 1.75rem;
+            }
+            
+            .hero-title {
+                font-size: 2.2rem;
+            }
+            
+            .nav-cards {
+                grid-template-columns: 1fr;
+                gap: var(--spacing-md);
+            }
+            
+            .nav-card {
+                padding: var(--spacing-lg);
+            }
+        }
+        
+        /* 辅助类 */
+        .text-center { text-align: center; }
+        .text-left { text-align: left; }
+        .text-right { text-align: right; }
+        
+        .mb-0 { margin-bottom: 0; }
+        .mb-1 { margin-bottom: var(--spacing-xs); }
+        .mb-2 { margin-bottom: var(--spacing-sm); }
+        .mb-3 { margin-bottom: var(--spacing-md); }
+        .mb-4 { margin-bottom: var(--spacing-lg); }
+        .mb-5 { margin-bottom: var(--spacing-xl); }
+        
+        .mt-0 { margin-top: 0; }
+        .mt-1 { margin-top: var(--spacing-xs); }
+        .mt-2 { margin-top: var(--spacing-sm); }
+        .mt-3 { margin-top: var(--spacing-md); }
+        .mt-4 { margin-top: var(--spacing-lg); }
+        .mt-5 { margin-top: var(--spacing-xl); }
+    </style>
+</head>
+<body>
+    <!-- 标题栏 -->
+    <header class="header">
+        <div class="header-content">
+            <h1 class="header-title">Fate GM助手</h1>
+            <nav>
+                <ul class="nav">
+                    <li><a href="index.html" class="nav-link active">首页</a></li>
+                    <li><a href="BattleControl.html" class="nav-link">战斗控制</a></li>
+                    <li><a href="BattleSheet.html" class="nav-link">战斗表格</a></li>
+                    <li><a href="CharacterCardUpload.html" class="nav-link">角色卡上传</a></li>
+                    <li><a href="DashboardCampaign.html" class="nav-link">战役仪表板</a></li>
+                    <li><a href="SkillRecord.html" class="nav-link">技能记录</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+    
+    <!-- 英雄标题区域 -->
+    <div class="hero-header">
+        <div class="container">
+            <h1 class="hero-title">Fate GM助手</h1>
+            <p class="hero-subtitle">游戏管理员的得力助手，为您的Fate游戏提供全面支持</p>
+        </div>
+    </div>
+    
+    <div class="container">
+        <!-- 导航卡片区域 -->
+        <div class="nav-cards">
+            <!-- 战斗控制 -->
+            <div class="nav-card card-battle">
+                <span class="card-icon">⚔️</span>
+                <h2>战斗控制</h2>
+                <p>管理战斗流程，控制战斗节奏和事件</p>
+                <a href="BattleControl.html" aria-label="进入战斗控制页面">进入战斗控制</a>
+            </div>
+            
+            <!-- 战斗表格 -->
+            <div class="nav-card card-sheet">
+                <span class="card-icon">📊</span>
+                <h2>战斗表格</h2>
+                <p>记录战斗数据，计算胜率和属性</p>
+                <a href="BattleSheet.html" aria-label="查看战斗表格页面">查看战斗表格</a>
+            </div>
+            
+            <!-- 角色卡上传 -->
+            <div class="nav-card card-character">
+                <span class="card-icon">👤</span>
+                <h2>角色卡上传</h2>
+                <p>上传和管理角色卡片信息</p>
+                <a href="CharacterCardUpload.html" aria-label="上传角色卡页面">上传角色卡</a>
+            </div>
+            
+            <!-- 战役仪表板 -->
+            <div class="nav-card card-dashboard">
+                <span class="card-icon">📈</span>
+                <h2>战役仪表板</h2>
+                <p>管理和监控您的Fate战役</p>
+                <a href="DashboardCampaign.html" aria-label="查看战役仪表板页面">查看战役仪表板</a>
+            </div>
+            
+            <!-- 技能记录 -->
+            <div class="nav-card card-skill">
+                <span class="card-icon">✨</span>
+                <h2>技能记录</h2>
+                <p>记录和管理角色技能使用情况</p>
+                <a href="SkillRecord.html" aria-label="查看技能记录页面">查看技能记录</a>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 页脚 -->
+    <footer class="footer">
+        <div class="container">
+            <p class="footer-text">&copy; 2023 Fate GM助手 - 为您的游戏体验保驾护航</p>
+        </div>
+    </footer>
+</body>
+</html>

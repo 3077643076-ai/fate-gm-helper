@@ -1,0 +1,77 @@
+plugins:
+  group:server:
+    server:xpw0e7:
+      port: 5140
+      maxPort: 5149
+    ~server-satori:jbn5q7: {}
+    ~server-temp:sdv9fi: {}
+  group:basic:
+    ~admin:yfoofa: {}
+    ~bind:40u2xp: {}
+    commands:l3116w: {}
+    help:anhipe: {}
+    http:ervset: {}
+    ~inspect:siyt4l: {}
+    locales:dnk32r: {}
+    proxy-agent:e6m0jc: {}
+    rate-limit:t3dixr: {}
+    telemetry:fl0geg: {}
+    fate-actions:fategm:
+      apiBase: http://localhost:8080/api
+  group:console:
+    actions:bc1t1o: {}
+    analytics:r4x2zl: {}
+    android:93ol5a:
+      $if: env.KOISHI_AGENT?.includes('Android')
+    ~auth:bsgk7k: {}
+    config:b0cam6: {}
+    console:vjp22s:
+      open: true
+    dataview:z8jrxv: {}
+    desktop:iepetc:
+      $if: env.KOISHI_AGENT?.includes('Desktop')
+    explorer:dph9jw: {}
+    logger:y7zrni: {}
+    insight:38x005: {}
+    market:9so3fl:
+      search:
+        endpoint: https://registry.koishi.chat/index.json
+    notifier:3iwmrf: {}
+    oobe:wy50ct: {}
+    sandbox:pstgxm: {}
+    status:8ir2nx: {}
+    theme-vanilla:huww5n: {}
+  group:storage:
+    ~database-mongo:bbjc4f:
+      database: koishi
+    ~database-mysql:72gn6d:
+      database: koishi
+    ~database-postgres:qrgehd:
+      database: koishi
+    database-sqlite:ld9poo:
+      path: data/koishi.db
+    assets-local:4t1hcj: {}
+  group:adapter:
+    ~adapter-dingtalk:9w3npp: {}
+    ~adapter-discord:y7or3z: {}
+    ~adapter-kook:o5lwcs: {}
+    ~adapter-lark:05s4x5: {}
+    ~adapter-line:nyh53u: {}
+    ~adapter-mail:fibp2n: {}
+    ~adapter-matrix:vwg0y1: {}
+    ~adapter-qq:bd6avh: {}
+    ~adapter-satori:drzdk2: {}
+    ~adapter-slack:ctohqf: {}
+    ~adapter-telegram:yw70d8: {}
+    ~adapter-wechat-official:r08gmc: {}
+    ~adapter-wecom:indwqc: {}
+    ~adapter-whatsapp:qkmxjc: {}
+    ~adapter-zulip:ue5ebp: {}
+  group:develop:
+    $if: env.NODE_ENV === 'development'
+    hmr:i8asb7:
+      root: .
+  adapter-onebot:6on6f0:
+    selfId: '715218931'
+    token: Mp6nHZ.HPv?2>iYH
+  trpgdice:oqgxmm: {}

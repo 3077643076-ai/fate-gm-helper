@@ -1,0 +1,22 @@
+﻿[
+    {
+        "id":  4,
+        "campaignId":  1,
+        "name":  "33",
+        "effect":  "3",
+        "description":  "3",
+        "manaAmount":  30,
+        "battlefieldWidth":  6,
+        "populationFlow":  4
+    },
+    {
+        "id":  5,
+        "campaignId":  1,
+        "name":  "sad",
+        "effect":  "",
+        "description":  "",
+        "manaAmount":  34,
+        "battlefieldWidth":  5,
+        "populationFlow":  7
+    }
+]
