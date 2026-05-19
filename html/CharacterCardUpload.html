@@ -1,0 +1,1419 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>角色卡上传 - Fate GM助手</title>
+        <style>
+        /* 统一的CSS变量系统 */
+        :root {
+            /* 基础色彩 */
+            --color-primary: #6c5ce7;
+            --color-primary-light: #a29bfe;
+            --color-primary-dark: #5f3dc4;
+            --color-secondary: #00cec9;
+            --color-secondary-light: #81ecec;
+            --color-secondary-dark: #00838f;
+            --color-accent: #fdcb6e;
+            --color-accent-light: #ffeaa7;
+            --color-accent-dark: #e17055;
+            
+            /* 文本色彩 */
+            --color-text-primary: #2d3436;
+            --color-text-secondary: #636e72;
+            --color-text-tertiary: #b2bec3;
+            
+            /* 背景色彩 */
+            --color-bg-primary: #ffffff;
+            --color-bg-secondary: #f8f9fa;
+            --color-bg-tertiary: #e9ecef;
+            
+            /* 功能色彩 */
+            --color-success: #00b894;
+            --color-warning: #fdcb6e;
+            --color-danger: #d63031;
+            --color-info: #0984e3;
+            
+            /* 渐变色彩 */
+            --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --gradient-secondary: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            --gradient-tertiary: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            --gradient-accent: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+            
+            /* 边框色彩 */
+            --color-border: #dee2e6;
+            --color-border-light: #f1f3f4;
+            --color-border-dark: #adb5bd;
+            
+            /* 阴影效果 */
+            --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.05);
+            --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.15);
+            --shadow-xl: 0 16px 32px rgba(0, 0, 0, 0.2);
+            
+            /* 圆角效果 */
+            --radius-sm: 0.25rem;
+            --radius-md: 0.5rem;
+            --radius-lg: 0.75rem;
+            --radius-xl: 1rem;
+            --radius-full: 9999px;
+            
+            /* 间距系统 */
+            --spacing-xs: 0.25rem;
+            --spacing-sm: 0.5rem;
+            --spacing-md: 1rem;
+            --spacing-lg: 1.5rem;
+            --spacing-xl: 2rem;
+            --spacing-2xl: 3rem;
+            
+            /* 过渡效果 */
+            --transition-fast: 0.15s ease;
+            --transition-normal: 0.3s ease;
+            --transition-slow: 0.5s ease;
+        }
+        /* 基础样式 */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Microsoft YaHei', sans-serif;
+            background-color: var(--color-bg-secondary);
+            color: var(--color-text-secondary);
+            line-height: 1.6;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        /* 容器样式 */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 var(--spacing-lg);
+            flex: 1;
+        }
+        
+        /* ===== 顶部导航栏：全站统一 ===== */
+        .header {
+            background: var(--gradient-primary);
+            color: white;
+            padding: var(--spacing-md) var(--spacing-lg);
+            box-shadow: var(--shadow-md);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+        
+        .header-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: var(--spacing-md);
+        }
+        
+        .header-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: white;
+            margin: 0;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+        
+        .nav {
+            list-style: none;
+            display: flex;
+            gap: var(--spacing-md);
+            margin: 0;
+            padding: 0;
+            flex-wrap: wrap;
+        }
+        
+        .nav-link {
+            color: white;
+            text-decoration: none;
+            padding: var(--spacing-sm) var(--spacing-md);
+            border-radius: var(--radius-md);
+            font-weight: 500;
+            transition: all var(--transition-normal);
+            opacity: 0.9;
+        }
+        
+        .nav-link:hover {
+            opacity: 1;
+            background-color: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+        }
+        
+        .nav-link.active {
+            background-color: rgba(255, 255, 255, 0.3);
+            font-weight: 600;
+        }
+        
+        /* 额外的导航样式 */
+        .header-nav a:hover {
+            background-color: rgba(255, 255, 255, 0.2);
+            transform: translateY(-1px);
+        }
+        
+        .header-nav a.active {
+            background-color: rgba(255, 255, 255, 0.25);
+            font-weight: 500;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        /* 页脚样式 */
+        .footer {
+            background-color: var(--color-bg-secondary);
+            border-top: 1px solid var(--color-border);
+            padding: var(--spacing-lg) var(--spacing-xl);
+            text-align: center;
+            margin-top: var(--spacing-xl);
+        }
+        
+        .footer-text {
+            color: var(--color-text-tertiary);
+            font-size: 0.875rem;
+            margin: 0;
+        }
+        
+        /* 标题样式 */
+        h1, h2, h3, h4, h5, h6 {
+            margin-bottom: var(--spacing-md);
+            font-weight: 700;
+            line-height: 1.2;
+        }
+        
+        h1 {
+            font-size: 2rem;
+            color: var(--color-text-primary);
+        }
+        
+        h2 {
+            font-size: 1.75rem;
+            color: var(--color-text-primary);
+        }
+        
+        h3 {
+            font-size: 1.5rem;
+            color: var(--color-text-primary);
+        }
+        
+        /* 增强的标题样式 */
+        .header-title h1 {
+            margin: 0;
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--color-text-primary);
+            padding-bottom: var(--spacing-sm);
+            position: relative;
+        }
+        
+        .header-title h1::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: var(--gradient-primary);
+            border-radius: var(--radius-full);
+        }
+        
+        /* 卡片样式 */
+        .card {
+            background-color: var(--color-bg-primary);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-md);
+            margin-bottom: var(--spacing-xl);
+            overflow: hidden;
+            transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+        }
+        
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+        
+        .card-header {
+            padding: var(--spacing-md) var(--spacing-lg);
+            border-bottom: 1px solid var(--color-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: var(--color-bg-secondary);
+        }
+        
+        .card-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--color-text-primary);
+            margin: 0;
+        }
+        
+        .card-body {
+            padding: var(--spacing-lg);
+        }
+        
+        .card-body.p-6 {
+            padding: var(--spacing-lg);
+        }
+        
+        .card-footer {
+            padding: var(--spacing-md) var(--spacing-lg);
+            border-top: 1px solid var(--color-border);
+            background-color: var(--color-bg-secondary);
+        }
+        
+        /* 按钮样式 */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: var(--spacing-sm) var(--spacing-md);
+            border: 1px solid transparent;
+            border-radius: var(--radius-md);
+            font-weight: 500;
+            text-align: center;
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            text-decoration: none;
+        }
+        
+        .btn:focus {
+            outline: 2px solid var(--color-primary);
+            outline-offset: 2px;
+        }
+        
+        /* 渐变按钮 */
+        .btn-gradient {
+            background: var(--gradient-primary);
+            color: white;
+            border: none;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .btn-gradient:hover {
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-md);
+        }
+        
+        .btn-gradient::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transform: translateX(-100%);
+            transition: transform var(--transition-slow);
+        }
+        
+        .btn-gradient:hover::after {
+            transform: translateX(100%);
+        }
+        
+        /* 轮廓按钮 */
+        .btn-outline {
+            background: transparent;
+            border: 1px solid var(--color-primary);
+            color: var(--color-primary);
+        }
+        
+        .btn-outline:hover {
+            background: var(--color-primary);
+            color: white;
+        }
+        
+        /* 按钮大小 */
+        .btn-lg {
+            padding: var(--spacing-md) var(--spacing-xl);
+            font-size: 1.125rem;
+        }
+        
+        /* 辅助类 */
+        .text-center {
+            text-align: center;
+        }
+        
+        .text-secondary {
+            color: var(--color-text-secondary);
+        }
+        
+        .mb-1 {
+            margin-bottom: var(--spacing-xs);
+        }
+        
+        .mb-2 {
+            margin-bottom: var(--spacing-sm);
+        }
+        
+        .mb-3 {
+            margin-bottom: var(--spacing-md);
+        }
+        
+        .mb-4 {
+            margin-bottom: var(--spacing-lg);
+        }
+        
+        .mb-5 {
+            margin-bottom: var(--spacing-xl);
+        }
+        
+        /* 响应式设计 */
+        @media (max-width: 992px) {
+            .header-container {
+                flex-direction: column;
+                gap: var(--spacing-md);
+                text-align: center;
+            }
+            
+            .header-nav {
+                justify-content: center;
+                flex-wrap: wrap;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                padding: var(--spacing-md);
+            }
+            
+            .header {
+                padding: var(--spacing-md);
+            }
+            
+            .header-title {
+                font-size: 1.25rem;
+            }
+            
+            h1 {
+                font-size: 1.75rem;
+            }
+            
+            h2 {
+                font-size: 1.25rem;
+            }
+            
+            .card-body {
+                padding: var(--spacing-md);
+            }
+        }
+        
+        .btn-primary {
+            background-color: var(--primary-color);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background-color: var(--primary-hover);
+        }
+        
+        .btn-secondary {
+            background-color: var(--bg-primary);
+            color: var(--text-secondary);
+            border-color: var(--border-color);
+        }
+        
+        .btn-secondary:hover {
+            background-color: var(--bg-tertiary);
+            border-color: var(--border-hover);
+        }
+        
+        .btn-danger {
+            background-color: var(--danger-color);
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background-color: #dc2626;
+        }
+        
+        .btn-sm {
+            padding: var(--spacing-xs) var(--spacing-sm);
+            font-size: 0.75rem;
+        }
+        
+        .btn-lg {
+            padding: var(--spacing-md) var(--spacing-lg);
+            font-size: 1rem;
+        }
+        
+        /* 兼容旧的button类名 */
+        .button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: var(--spacing-sm) var(--spacing-md);
+            border: 1px solid transparent;
+            border-radius: var(--radius-md);
+            font-weight: 500;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .button-primary {
+            background-color: var(--primary-color);
+            color: white;
+        }
+        
+        .button-primary:hover {
+            background-color: var(--primary-hover);
+        }
+        
+        .button-secondary {
+            background-color: var(--bg-primary);
+            color: var(--text-secondary);
+            border-color: var(--border-color);
+        }
+        
+        .button-secondary:hover {
+            background-color: var(--bg-tertiary);
+            border-color: var(--border-hover);
+        }
+        
+        .button-danger {
+            background-color: var(--danger-color);
+            color: white;
+        }
+        
+        .button-danger:hover {
+            background-color: #dc2626;
+        }
+        
+        .button-small {
+            padding: var(--spacing-xs) var(--spacing-sm);
+            font-size: 0.75rem;
+        }
+        
+        .button-large {
+            padding: var(--spacing-md) var(--spacing-lg);
+            font-size: 1rem;
+        }
+        
+        /* 网格布局 */
+        .grid {
+            display: grid;
+            gap: var(--spacing-lg);
+            margin-bottom: var(--spacing-xl);
+        }
+        
+        .grid-cols-1 {
+            grid-template-columns: repeat(1, minmax(0, 1fr));
+        }
+        
+        .md\:grid-cols-2 {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        
+        .lg\:grid-cols-4 {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+        
+        /* 统计卡片样式 */
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-top: var(--spacing-sm);
+        }
+        
+        .text-blue-600 {
+            color: var(--primary-color);
+        }
+        
+        .text-green-600 {
+            color: var(--success-color);
+        }
+        
+        .text-purple-600 {
+            color: #7c3aed;
+        }
+        
+        .text-orange-600 {
+            color: #ea580c;
+        }
+        
+        /* 战役项样式 */
+        .campaign-item {
+            padding: var(--spacing-md);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            margin-bottom: var(--spacing-lg);
+            background-color: var(--bg-primary);
+            transition: all 0.2s;
+        }
+        
+        .campaign-item:hover {
+            border-color: var(--primary-color);
+            box-shadow: var(--shadow-md);
+        }
+        
+        /* 进度条样式 */
+        .progress-container {
+            width: 100%;
+            background-color: var(--border-color);
+            border-radius: var(--radius-full);
+            height: 0.625rem;
+            overflow: hidden;
+            margin-top: var(--spacing-sm);
+        }
+        
+        .progress-bar {
+            background-color: var(--primary-color);
+            height: 100%;
+            border-radius: var(--radius-full);
+            transition: width 0.3s;
+        }
+        
+        /* 活动项样式 */
+        .activity-item {
+            display: flex;
+            align-items: flex-start;
+            padding: var(--spacing-md);
+            border-radius: var(--radius-md);
+            transition: background-color 0.2s;
+        }
+        
+        .activity-item:hover {
+            background-color: var(--bg-secondary);
+        }
+        
+        /* 表单元素样式 */
+        .form-input {
+            width: 100%;
+            padding: var(--spacing-sm) var(--spacing-md);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            font-size: 1rem;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        
+        .form-input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+        
+        /* 兼容旧的input类名 */
+        .input {
+            width: 100%;
+            padding: var(--spacing-sm) var(--spacing-md);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            font-size: 1rem;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        
+        .input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+        
+        /* 表格样式 */
+        .overflow-x-auto {
+            overflow-x: auto;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: var(--bg-primary);
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+        }
+        
+        th {
+            text-align: left;
+            padding: var(--spacing-md) var(--spacing-lg);
+            background-color: var(--bg-tertiary);
+            color: var(--text-tertiary);
+            font-size: 0.875rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        th.text-right {
+            text-align: right;
+        }
+        
+        td {
+            padding: var(--spacing-md) var(--spacing-lg);
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        tr:hover {
+            background-color: var(--bg-secondary);
+        }
+        
+        tr:last-child td {
+            border-bottom: none;
+        }
+        
+        /* 徽章样式 */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: var(--spacing-xs) var(--spacing-sm);
+            border-radius: var(--radius-full);
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        
+        .badge-success {
+            background-color: #dcfce7;
+            color: var(--success-color);
+        }
+        
+        .badge-secondary {
+            background-color: var(--bg-tertiary);
+            color: var(--text-tertiary);
+        }
+        
+        /* 复选框样式 */
+        .form-checkbox {
+            width: 1rem;
+            height: 1rem;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+        }
+        
+        .form-checkbox:checked {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+        
+        /* 兼容旧的checkbox类名 */
+        .checkbox {
+            width: 1rem;
+            height: 1rem;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+        }
+        
+        .checkbox:checked {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+        
+        /* 图标样式 */
+        .icon {
+            width: 1rem;
+            height: 1rem;
+            margin-right: var(--spacing-sm);
+        }
+        
+        /* 对话框样式 */
+        .fixed {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+        }
+        
+        .bg-black {
+            background-color: black;
+        }
+        
+        .bg-opacity-50 {
+            opacity: 0.5;
+        }
+        
+        .z-50 {
+            z-index: 50;
+        }
+        
+        .max-w-md {
+            max-width: 28rem;
+        }
+        
+        /* 布局辅助类 */
+        .flex {
+            display: flex;
+        }
+        
+        .flex-col {
+            flex-direction: column;
+        }
+        
+        .sm\:flex-row {
+            flex-direction: row;
+        }
+        
+        .items-center {
+            align-items: center;
+        }
+        
+        .items-start {
+            align-items: flex-start;
+        }
+        
+        .justify-between {
+            justify-content: space-between;
+        }
+        
+        .justify-end {
+            justify-content: flex-end;
+        }
+        
+        .justify-center {
+            justify-content: center;
+        }
+        
+        .gap-4 {
+            gap: var(--spacing-md);
+        }
+        
+        .space-x-2 {
+            gap: var(--spacing-sm);
+        }
+        
+        .space-x-3 {
+            gap: 0.75rem;
+        }
+        
+        .space-y-4 > * + * {
+            margin-top: var(--spacing-md);
+        }
+        
+        .space-y-6 > * + * {
+            margin-top: var(--spacing-lg);
+        }
+        
+        .flex-1 {
+            flex: 1;
+        }
+        
+        .flex-shrink-0 {
+            flex-shrink: 0;
+        }
+        
+        /* 间距辅助类 */
+        .mb-2 {
+            margin-bottom: var(--spacing-sm);
+        }
+        
+        .mb-4 {
+            margin-bottom: var(--spacing-md);
+        }
+        
+        .mb-6 {
+            margin-bottom: var(--spacing-lg);
+        }
+        
+        
+        .mb-8 {
+            margin-bottom: var(--spacing-xl);
+        }
+        
+        .mt-8 {
+            margin-top: var(--spacing-xl);
+        }
+        
+        /* 文本样式 */
+        .text-center {
+            text-align: center;
+        }
+        
+        .text-right {
+            text-align: right;
+        }
+        
+        .text-lg {
+            font-size: 1.125rem;
+        }
+        
+        .text-sm {
+            font-size: 0.875rem;
+        }
+        
+        .text-xs {
+            font-size: 0.75rem;
+        }
+        
+        .font-medium {
+            font-weight: 500;
+        }
+        
+        .font-semibold {
+            font-weight: 600;
+        }
+        
+        .font-bold {
+            font-weight: 700;
+        }
+        
+        .text-gray-500 {
+            color: var(--text-tertiary);
+        }
+        
+        .text-gray-700 {
+            color: var(--text-secondary);
+        }
+        
+        .text-gray-800 {
+            color: #1f2937;
+        }
+        
+        .text-gray-900 {
+            color: var(--text-primary);
+        }
+        
+        /* 其他辅助类 */
+        .w-full {
+            width: 100%;
+        }
+        
+        .sm\:w-auto {
+            width: auto;
+        }
+        
+        .h-10 {
+            height: 2.5rem;
+        }
+        
+        .w-10 {
+            width: 2.5rem;
+        }
+        
+        .bg-gray-100 {
+            background-color: #f3f4f6;
+        }
+        
+        .bg-blue-100 {
+            background-color: #dbeafe;
+        }
+        
+        .rounded-full {
+            border-radius: 9999px;
+        }
+        
+        .px-2 {
+            padding-left: 0.5rem;
+            padding-right: 0.5rem;
+        }
+        
+        .py-1 {
+            padding-top: 0.25rem;
+            padding-bottom: 0.25rem;
+        }
+        
+        .py-8 {
+            padding-top: 2rem;
+            padding-bottom: 2rem;
+        }
+        
+        .ml-1 {
+            margin-left: var(--spacing-xs);
+        }
+        
+        .ml-4 {
+            margin-left: var(--spacing-md);
+        }
+        
+        .pb-2 {
+            padding-bottom: var(--spacing-sm);
+        }
+        
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .header-nav {
+                gap: var(--spacing-sm);
+            }
+            
+            .header-nav a {
+                padding: var(--spacing-xs) var(--spacing-sm);
+                font-size: 0.875rem;
+            }
+            
+            .container {
+                padding: var(--spacing-md);
+            }
+        }
+
+/* ===== 内容区统一美化 ===== /
+:root{   / 沿用导航栏变量，仅补充两个半透明色 /
+--color-bg-glass: rgba(255,255,255,0.72);   / 毛玻璃底色 */
+--color-shadow-light: rgba(108,92,231,0.08);
+}
+body{
+/* 把原来的灰底换成更干净的浅色渐变，与导航栏顺色 */
+background: linear-gradient(135deg, #f5f7fa 0%, #e4e8f0 100%);
+}
+/* 主标题 */
+.upload-section > h1{
+font-size: 2rem;
+font-weight: 700;
+color: var(--color-text-primary);
+margin-bottom: var(--spacing-lg);
+text-align: center;
+letter-spacing: .5px;
+}
+/* 说明书卡片 */
+.instructions{
+background: var(--color-bg-glass);
+border: 1px solid rgba(255,255,255,0.5);
+border-radius: var(--radius-xl);
+padding: var(--spacing-lg) var(--spacing-xl);
+margin-bottom: var(--spacing-xl);
+box-shadow: var(--shadow-md), 0 0 0 1px var(--color-shadow-light);
+backdrop-filter: blur(12px);
+transition: transform var(--transition-fast);
+}
+.instructions:hover{
+transform: translateY(-2px);
+}
+.instructions h3{
+color: var(--color-primary-dark);
+margin-bottom: var(--spacing-sm);
+}
+/* 文本域 */
+#character-card-input{
+width: 100%;
+min-height: 180px;
+padding: var(--spacing-md);
+font-size: 1rem;
+line-height: 1.7;
+border: 1px solid var(--color-border);
+border-radius: var(--radius-lg);
+background: var(--color-bg-primary);
+color: var(--color-text-secondary);
+resize: vertical;
+transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+#character-card-input:focus{
+outline: none;
+border-color: var(--color-primary);
+box-shadow: 0 0 0 3px rgba(108,92,231,0.15);
+}
+/* 上传按钮 /
+#upload-button{
+margin: var(--spacing-lg) auto;
+display: block;          / 居中 */
+padding: var(--spacing-md) 3rem;
+font-size: 1.1rem;
+font-weight: 600;
+border-radius: var(--radius-full);
+background: var(--gradient-primary);
+color: #fff;
+border: none;
+box-shadow: var(--shadow-md);
+transition: all var(--transition-normal);
+}
+#upload-button:hover{
+transform: translateY(-2px);
+box-shadow: var(--shadow-lg);
+}
+#upload-button:active{
+transform: translateY(0);
+}
+/* 表格容器 */
+.table-container{
+background: var(--color-bg-primary);
+border-radius: var(--radius-lg);
+padding: var(--spacing-md);
+margin-bottom: var(--spacing-xl);
+box-shadow: var(--shadow-sm);
+overflow: auto;
+}
+table{
+border-radius: var(--radius-md);
+overflow: hidden;
+}
+thead{
+background: var(--gradient-primary);
+color: #fff;
+}
+th, td{
+padding: var(--spacing-sm) var(--spacing-md);
+}
+tbody tr:last-child td{
+border-bottom: none;
+}
+tbody tr:hover{
+background: rgba(162,155,254,0.06);
+}
+/* 技能/宝具三栏 */
+.skills-np-container{
+display: grid;
+grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+gap: var(--spacing-lg);
+margin-bottom: var(--spacing-xl);
+}
+.section{
+background: var(--color-bg-glass);
+border: 1px solid rgba(255,255,255,0.5);
+border-radius: var(--radius-lg);
+padding: var(--spacing-lg);
+box-shadow: var(--shadow-sm), 0 0 0 1px var(--color-shadow-light);
+backdrop-filter: blur(8px);
+}
+.section h4{
+color: var(--color-primary-dark);
+margin-bottom: var(--spacing-sm);
+}
+.section ul{
+margin: 0;
+padding-left: 1.1em;
+color: var(--color-text-secondary);
+}
+.section li+li{
+margin-top: 4px;
+}
+/* 示例格式代码块 */
+.example-format{
+background: var(--color-bg-secondary);
+border-left: 4px solid var(--color-primary);
+border-radius: var(--radius-md);
+padding: var(--spacing-md);
+font-family: "SFMono-Regular", Consolas, monospace;
+font-size: 0.9rem;
+color: var(--color-text-secondary);
+white-space: pre-wrap;
+word-break: break-all;
+box-shadow: inset 0 0 8px rgba(0,0,0,0.03);        
+    </style>
+</head>
+<body>
+    <!-- 标题栏 -->
+    <header class="header">
+        <div class="header-content">
+            <h1 class="header-title">Fate GM助手</h1>
+            <nav>
+                <ul class="nav">
+                    <li><a href="index.html" class="nav-link">首页</a></li>
+                    <li><a href="BattleControl.html" class="nav-link">战斗控制</a></li>
+                    <li><a href="BattleSheet.html" class="nav-link">战斗表格</a></li>
+                    <li><a href="CharacterCardUpload.html" class="nav-link active">角色卡上传</a></li>
+                    <li><a href="DashboardCampaign.html" class="nav-link">战役仪表板</a></li>
+                    <li><a href="SkillRecord.html" class="nav-link">技能记录</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+    <!-- 主内容区域 -->
+    <main class="container">
+        <h1>角色卡上传</h1>
+        
+        <div class="upload-section">
+            <div class="instructions">
+                <h3>使用说明</h3>
+                <p>请将角色卡文本粘贴到下方文本框中，格式应包含：职介信息、合计属性、基础属性、补正属性、职介技能、保有技能和宝具信息。</p>
+            </div>
+            
+            <h3>角色卡文本</h3>
+            <textarea id="character-card-input" placeholder="在此粘贴角色卡文本..."></textarea>
+            
+            <button id="upload-button" class="btn btn-gradient">上传角色卡</button>
+            
+            <h3>角色属性表格</h3>
+            <div class="table-container">
+                <table id="character-attributes-table">
+                    <thead>
+                        <tr>
+                            <th>职介</th>
+                            <th>合计等级</th>
+                            <th>合计筋力</th>
+                            <th>合计耐久</th>
+                            <th>合计敏捷</th>
+                            <th>合计魔力</th>
+                            <th>合计幸运</th>
+                            <th>合计宝具</th>
+                        </tr>
+                    </thead>
+                    <tbody id="attributes-table-body">
+                        <!-- 表格内容将通过JavaScript动态填充 -->
+                        <tr>
+                            <td colspan="8" style="text-align: center; color: #666;">上传角色卡后显示属性信息</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <h3>技能与宝具</h3>
+            <div class="skills-np-container">
+                <div class="section">
+                    <h4>职介技能</h4>
+                    <ul id="class-skills-list">
+                        <li style="color: #666;">上传角色卡后显示职介技能</li>
+                    </ul>
+                </div>
+                
+                <div class="section">
+                    <h4>保有技能</h4>
+                    <ul id="personal-skills-list">
+                        <li style="color: #666;">上传角色卡后显示保有技能</li>
+                    </ul>
+                </div>
+                
+                <div class="section">
+                    <h4>宝具</h4>
+                    <ul id="noble-phantasms-list">
+                        <li style="color: #666;">上传角色卡后显示宝具</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <h3>示例格式</h3>
+            <div class="example-format">
+                .st 职介 Rider 合计等级 70 合计筋力 55 合计耐久 55 合计敏捷 75 合计魔力 95 合计幸运 115 合计宝具 65 基础等级 70 基础筋力 50 基础耐久 50 基础敏捷 70 基础魔力 90 基础幸运 110 基础宝具 0 补正等级  补正筋力 5 补正耐久 5 补正敏捷 5 补正魔力 5 补正幸运 5 补正宝具 5 职介技能1 对魔力B(本职) 职介技能2 骑乘A(本职) 职介技能3 神性B 保有技能1 领袖气质A 保有技能2 皇帝特权A 保有技能3 太阳神的加护A 宝具1 光辉复合大神殿EX 宝具2 暗夜太阳船A+ 宝具3 热砂狮身兽A
+            </div>
+        </div>
+        
+    </main>
+
+    <!-- 页脚 -->
+    <footer class="footer">
+        <div class="container">
+            <p class="footer-text">&copy; 2023 Fate GM助手 - 为您的游戏体验保驾护航</p>
+        </div>
+    </footer>
+
+    <script>
+        // 导航链接活动状态处理
+        document.addEventListener('DOMContentLoaded', function() {
+            const navLinks = document.querySelectorAll('.nav-link');
+            
+            navLinks.forEach(link => {
+                link.addEventListener('click', function(e) {
+                    // 移除所有链接的active类
+                    navLinks.forEach(l => l.classList.remove('active'));
+                    // 添加当前链接的active类
+                    this.classList.add('active');
+                });
+            });
+        });
+            document.addEventListener('DOMContentLoaded', function() {
+                // 上传按钮点击事件处理
+                document.getElementById('upload-button').addEventListener('click', function() {
+                    const inputText = document.getElementById('character-card-input').value.trim();
+                    
+                    if (!inputText) {
+                        alert('请输入角色卡文本！');
+                        return;
+                    }
+                    
+                    // 检查文本是否以.st开头
+                    if (!inputText.startsWith('.st')) {
+                        alert('角色卡文本格式错误，应以.st开头！');
+                        return;
+                    }
+                    
+                    // 解析角色卡数据
+                    const characterData = parseCharacterCard(inputText);
+                    
+                    if (!characterData) {
+                        alert('角色卡数据解析失败，请检查格式！');
+                        return;
+                    }
+                    
+                    // 填充表格数据
+                    fillCharacterTable(characterData);
+                    
+                    // 显示技能和宝具信息
+                    displaySkillsAndNoblePhantasms(characterData);
+                    
+                    alert('角色卡上传成功！');
+                    console.log('解析后的角色卡数据:', characterData);
+                });
+                
+                // 解析角色卡数据的函数
+                function parseCharacterCard(text) {
+                    try {
+                        // 分割文本为数组
+                        const parts = text.split(' ');
+                        
+                        // 初始化结果对象
+                        const result = {
+                            class: '',
+                            total: {},
+                            base: {},
+                            correction: {},
+                            classSkills: [],
+                            personalSkills: [],
+                            noblePhantasms: []
+                        };
+                        
+                        // 提取职介信息
+                        const classIndex = parts.indexOf('职介');
+                        if (classIndex !== -1 && classIndex < parts.length - 1) {
+                            result.class = parts[classIndex + 1];
+                        }
+                        
+                        // 提取合计属性
+                        result.total.level = getValueAfterKey(parts, '合计等级');
+                        result.total.strength = getValueAfterKey(parts, '合计筋力');
+                        result.total.endurance = getValueAfterKey(parts, '合计耐久');
+                        result.total.agility = getValueAfterKey(parts, '合计敏捷');
+                        result.total.magic = getValueAfterKey(parts, '合计魔力');
+                        result.total.luck = getValueAfterKey(parts, '合计幸运');
+                        result.total.noblePhantasm = getValueAfterKey(parts, '合计宝具');
+                        
+                        // 提取基础属性
+                        result.base.level = getValueAfterKey(parts, '基础等级');
+                        result.base.strength = getValueAfterKey(parts, '基础筋力');
+                        result.base.endurance = getValueAfterKey(parts, '基础耐久');
+                        result.base.agility = getValueAfterKey(parts, '基础敏捷');
+                        result.base.magic = getValueAfterKey(parts, '基础魔力');
+                        result.base.luck = getValueAfterKey(parts, '基础幸运');
+                        result.base.noblePhantasm = getValueAfterKey(parts, '基础宝具');
+                        
+                        // 提取补正属性
+                        result.correction.level = getValueAfterKey(parts, '补正等级');
+                        result.correction.strength = getValueAfterKey(parts, '补正筋力');
+                        result.correction.endurance = getValueAfterKey(parts, '补正耐久');
+                        result.correction.agility = getValueAfterKey(parts, '补正敏捷');
+                        result.correction.magic = getValueAfterKey(parts, '补正魔力');
+                        result.correction.luck = getValueAfterKey(parts, '补正幸运');
+                        result.correction.noblePhantasm = getValueAfterKey(parts, '补正宝具');
+                        
+                        // 提取职介技能
+                        for (let i = 1; i <= 3; i++) {
+                            const skill = getValueAfterKey(parts, `职介技能${i}`, true);
+                            if (skill) result.classSkills.push(skill);
+                        }
+                        
+                        // 提取保有技能
+                        for (let i = 1; i <= 3; i++) {
+                            const skill = getValueAfterKey(parts, `保有技能${i}`, true);
+                            if (skill) result.personalSkills.push(skill);
+                        }
+                        
+                        // 提取宝具
+                        for (let i = 1; i <= 3; i++) {
+                            const np = getValueAfterKey(parts, `宝具${i}`, true);
+                            if (np) result.noblePhantasms.push(np);
+                        }
+                        
+                        return result;
+                    } catch (error) {
+                        console.error('解析角色卡时出错:', error);
+                        return null;
+                    }
+                }
+                
+                // 辅助函数：获取关键字后面的值
+                function getValueAfterKey(parts, key, combineRemaining = false) {
+                    const index = parts.indexOf(key);
+                    if (index === -1 || index >= parts.length - 1) {
+                        return '';
+                    }
+                    
+                    if (combineRemaining) {
+                        // 组合剩余部分，直到下一个关键字或结束
+                        let value = '';
+                        for (let i = index + 1; i < parts.length; i++) {
+                            // 检查是否遇到下一个关键字
+                            if (i + 1 < parts.length && 
+                                (parts[i + 1].startsWith('合计') || 
+                                 parts[i + 1].startsWith('基础') || 
+                                 parts[i + 1].startsWith('补正') || 
+                                 parts[i + 1].startsWith('职介技能') || 
+                                 parts[i + 1].startsWith('保有技能') || 
+                                 parts[i + 1].startsWith('宝具') ||
+                                 parts[i + 1].startsWith('职介'))) {
+                                value += parts[i];
+                                break;
+                            }
+                            value += parts[i] + ' ';
+                        }
+                        return value.trim();
+                    }
+                    
+                    return parts[index + 1];
+                }
+                
+                // 填充角色属性表格
+                function fillCharacterTable(data) {
+                    const tbody = document.getElementById('attributes-table-body');
+                    tbody.innerHTML = '';
+                    
+                    // 创建新行
+                    const row = document.createElement('tr');
+                    
+                    // 创建单元格并填充数据
+                    const cells = [
+                        data.class || '',
+                        data.total.level || '',
+                        data.total.strength || '',
+                        data.total.endurance || '',
+                        data.total.agility || '',
+                        data.total.magic || '',
+                        data.total.luck || '',
+                        data.total.noblePhantasm || ''
+                    ];
+                    
+                    cells.forEach(cellData => {
+                        const cell = document.createElement('td');
+                        cell.textContent = cellData;
+                        row.appendChild(cell);
+                    });
+                    
+                    tbody.appendChild(row);
+                }
+                
+                // 显示技能和宝具信息
+                function displaySkillsAndNoblePhantasms(data) {
+                    // 显示职介技能
+                    const classSkillsList = document.getElementById('class-skills-list');
+                    classSkillsList.innerHTML = '';
+                    if (data.classSkills.length > 0) {
+                        data.classSkills.forEach(skill => {
+                            const li = document.createElement('li');
+                            li.textContent = skill;
+                            classSkillsList.appendChild(li);
+                        });
+                    } else {
+                        const li = document.createElement('li');
+                        li.textContent = '无职介技能';
+                        li.style.color = '#666';
+                        classSkillsList.appendChild(li);
+                    }
+                    
+                    // 显示保有技能
+                    const personalSkillsList = document.getElementById('personal-skills-list');
+                    personalSkillsList.innerHTML = '';
+                    if (data.personalSkills.length > 0) {
+                        data.personalSkills.forEach(skill => {
+                            const li = document.createElement('li');
+                            li.textContent = skill;
+                            personalSkillsList.appendChild(li);
+                        });
+                    } else {
+                        const li = document.createElement('li');
+                        li.textContent = '无保有技能';
+                        li.style.color = '#666';
+                        personalSkillsList.appendChild(li);
+                    }
+                    
+                    // 显示宝具
+                    const noblePhantasmsList = document.getElementById('noble-phantasms-list');
+                    noblePhantasmsList.innerHTML = '';
+                    if (data.noblePhantasms.length > 0) {
+                        data.noblePhantasms.forEach(np => {
+                            const li = document.createElement('li');
+                            li.textContent = np;
+                            noblePhantasmsList.appendChild(li);
+                        });
+                    } else {
+                        const li = document.createElement('li');
+                        li.textContent = '无宝具';
+                        li.style.color = '#666';
+                        noblePhantasmsList.appendChild(li);
+                    }
+                }
+            });
+        </script>
+</body>
+</html>

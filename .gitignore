@@ -1,0 +1,48 @@
+# === 敏感配置（含密钥/密码）===
+*.env
+config.json
+application.yml
+**/application.yml
+settings.json
+
+# === 依赖与构建产物 ===
+node_modules/
+target/
+dist/
+*.class
+*.jar
+*.war
+
+# === IDE ===
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+*~
+
+# === 系统文件 ===
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# === 临时文件 ===
+*.log
+*.tmp
+temp/
+tmp/
+
+# === Python ===
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# === Koishi ===
+my-koishi-bot/data/
+
+# === 规则书与大文件（版权/体积）===
+空想圣杯桌游规则/
+
+# === 个人笔记 ===
+圣杯笔记本/

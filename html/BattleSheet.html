@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>战斗表 - Fate GM Helper</title>
+    <style>
+        /* 基础样式 */
+        * { margin:0; padding:0; box-sizing:border-box; }
+        :root {
+            --border: #d1d5db;
+            --blue-1: #e6f0ff;
+            --blue-2: #cfe3ff;
+            --blue-accent: #2b6cb0;
+            --yellow-1: #fff7ed;
+            --yellow-accent: #f6ad55;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Microsoft YaHei', sans-serif;
+            background: #f8f9fa;
+            color:#222;
+            line-height:1.5;
+            padding-bottom:2rem;
+        }
+        .header { background: linear-gradient(135deg,#667eea,#764ba2); color:white; padding:1rem 1.25rem; position:sticky; top:0; z-index:100; box-shadow:0 4px 8px rgba(0,0,0,0.08); }
+        .header-content{max-width:1200px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;}
+        .header-title{font-weight:700}
+        .nav{list-style:none;display:flex;gap:0.6rem}
+        .nav-link{color:white;text-decoration:none;padding:0.4rem 0.8rem;border-radius:0.4rem;opacity:0.95}
+
+        /* 布局 */
+        .container{max-width:1200px;margin:1.25rem auto;padding:0 1rem}
+        .battle-grid{display:flex;gap:1rem;align-items:flex-start;flex-wrap:wrap}
+        section{background:#fff;border-radius:6px;padding:0.4rem;border:1px solid var(--border)}
+
+        table{width:100%;border-collapse:collapse}
+        th,td{border:1px solid var(--border);padding:0.35rem;text-align:center;font-size:0.95rem}
+        .label-left{text-align:left;padding-left:0.6rem}
+
+        /* 蓝方 / 黄方 标题 */
+        .blue-title{background:var(--blue-accent);color:white;padding:0.5rem 0.75rem;text-align:left;font-weight:700}
+        .yellow-title{background:var(--yellow-accent);color:#1f2937;padding:0.5rem 0.75rem;text-align:left;font-weight:700}
+
+        /* 小屏幕自动换行 */
+        @media (max-width:900px){ .battle-grid{flex-direction:column} }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="header-content">
+            <div class="header-title">Fate GM助手</div>
+            <nav>
+                <ul class="nav">
+                    <li><a class="nav-link" href="index.html">首页</a></li>
+                    <li><a class="nav-link" href="BattleControl.html">战斗控制</a></li>
+                    <li><a class="nav-link" href="BattleSheet.html">战斗表格</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+    
+    <div class="container">
+        <div class="battle-grid">
+
+            <!-- 左侧（蓝方） -->
+            <section style="flex:1;min-width:420px;">
+                <div class="blue-title">战斗开始时　决定参战人选 — 蓝方</div>
+
+                <table style="margin-top:0.4rem">
+                    <thead>
+                        <tr>
+                            <th class="label-left">属性 / 位</th>
+                            <th style="background:var(--blue-1)">主力位</th>
+                            <th style="background:var(--blue-1)">辅助位</th>
+                            <th style="background:var(--blue-1)">辅助位</th>
+                            <th style="background:var(--blue-1)">辅助位</th>
+                            <th style="background:#fff">备注</th>
+                            <th style="background:var(--blue-2)">总值</th>
+                            <th style="background:#fff"> </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="label-left">—</td>
+                            <td>测试</td>
+                            <td>无</td>
+                            <td>无</td>
+                            <td>无</td>
+                            <td style="color:#e53e3e;font-weight:700">魔力不足</td>
+                            <td>0</td>
+                            <td></td>
+                        </tr>
+
+                        <tr>
+                            <td class="label-left">等级</td>
+                            <td style="background:var(--blue-1)">70</td>
+                            <td style="background:var(--blue-1)">0</td>
+                            <td style="background:var(--blue-1)">0</td>
+                            <td style="background:var(--blue-1)">0</td>
+                            <td></td>
+                            <td style="background:var(--blue-2);font-weight:700">70</td>
+                            <td></td>
+                        </tr>
+
+                        <tr>
+                            <td class="label-left">筋力</td>
+                            <td style="background:#e6f0ff">200</td>
+                            <td style="background:#e6f0ff">0</td>
+                            <td style="background:#e6f0ff">0</td>
+                            <td style="background:#e6f0ff">0</td>
+                            <td></td>
+                            <td style="background:#cfe3ff;font-weight:700">200</td>
+                            <td></td>
+                        </tr>
+
+                        <tr>
+                            <td class="label-left">耐力</td>
+                            <td style="background:var(--blue-1)">200</td>
+                            <td style="background:var(--blue-1)">0</td>
+                            <td style="background:var(--blue-1)">0</td>
+                            <td style="background:var(--blue-1)">0</td>
+                            <td></td>
+                            <td style="background:var(--blue-2);font-weight:700">200</td>
+                            <td></td>
+                        </tr>
+
+                        <tr>
+                            <td class="label-left">敏捷</td>
+                            <td style="background:#e6f0ff">200</td>
+                            <td style="background:#e6f0ff">0</td>
+                            <td style="background:#e6f0ff">0</td>
+                            <td style="background:#e6f0ff">0</td>
+                            <td></td>
+                            <td style="background:#cfe3ff;font-weight:700">200</td>
+                            <td></td>
+                        </tr>
+
+                        <tr>
+                            <td class="label-left">魔力</td>
+                            <td style="background:var(--blue-1)">200</td>
+                            <td style="background:var(--blue-1)">0</td>
+                            <td style="background:var(--blue-1)">0</td>
+                            <td style="background:var(--blue-1)">0</td>
+                            <td></td>
+                            <td style="background:var(--blue-2);font-weight:700">200</td>
+                            <td></td>
+                        </tr>
+
+                        <tr>
+                            <td class="label-left">幸运</td>
+                            <td style="background:#e6f0ff">200</td>
+                            <td style="background:#e6f0ff">0</td>
+                            <td style="background:#e6f0ff">0</td>
+                            <td style="background:#e6f0ff">0</td>
+                            <td></td>
+                            <td style="background:#cfe3ff;font-weight:700">200</td>
+                            <td></td>
+                        </tr>
+
+                        <tr>
+                            <td class="label-left">宝具</td>
+                            <td style="background:var(--blue-1)">50</td>
+                            <td style="background:var(--blue-1)">0</td>
+                            <td style="background:var(--blue-1)">0</td>
+                            <td style="background:var(--blue-1)">0</td>
+                            <td></td>
+                            <td style="background:#fde8d6;font-weight:700">50</td>
+                            <td></td>
+                        </tr>
+
+                        <tr>
+                            <td class="label-left">战前胜补</td>
+                            <td colspan="5" style="text-align:left;padding-left:0.6rem"></td>
+                            <td style="text-align:center">0</td>
+                            <td></td>
+                        </tr>
+
+                        <tr>
+                            <td class="label-left">战前胜怯</td>
+                            <td colspan="5" style="text-align:left;padding-left:0.6rem"></td>
+                            <td style="text-align:center">0</td>
+                            <td></td>
+                        </tr>
+                    </tbody>
+                    </table>
+            </section>
+
+            <!-- 右侧（黄方） -->
+            <section style="flex:0.6;min-width:320px;">
+                <div class="yellow-title">敌方（黄方）</div>
+
+                <table style="margin-top:0.4rem;">
+                    <thead>
+                        <tr>
+                            <th style="background:var(--yellow-1)" class="label-left">主力位</th>
+                            <th style="background:var(--yellow-1)">辅助位</th>
+                            <th style="background:var(--yellow-1)">辅助位</th>
+                            <th style="background:var(--yellow-1)">辅助位</th>
+                            <th style="background:var(--yellow-1)">辅助位</th>
+                            <th style="background:#fffbe6">总值</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td style="text-align:left;padding-left:0.5rem;background:#fffbe6;">
+                                <select style="width:100%;border:0;background:transparent">
+                                    <option>墨者</option>
+                                </select>
+                            </td>
+                            <td style="background:#fffbe6">无</td>
+                            <td style="background:#fffbe6">无</td>
+                            <td style="background:#fffbe6">无</td>
+                            <td style="background:#fffbe6">无</td>
+                            <td style="background:#fffbe6">总值</td>
+                        </tr>
+
+                        <tr>
+                            <td style="background:#fffbe6">0</td><td style="background:#fffbe6">0</td><td style="background:#fffbe6">0</td><td style="background:#fffbe6">0</td><td style="background:#fffbe6">0</td><td style="background:#fffbe6">/</td>
+                        </tr>
+
+                        <tr>
+                            <td style="background:#fde68a;font-weight:700">70</td><td style="background:#fff7d6">0</td><td style="background:#fff7d6">0</td><td style="background:#fff7d6">0</td><td style="background:#fff7d6">0</td><td style="background:#fde68a;font-weight:700">70</td>
+                        </tr>
+
+                        <tr>
+                            <td style="background:#fde68a;font-weight:700">20</td><td style="background:#fff7d6">0</td><td style="background:#fff7d6">0</td><td style="background:#fff7d6">0</td><td style="background:#fff7d6">0</td><td style="background:#fde68a;font-weight:700">20</td>
+                        </tr>
+
+                        <tr>
+                            <td style="background:#fde68a;font-weight:700">10</td><td style="background:#fff7d6">0</td><td style="background:#fff7d6">0</td><td style="background:#fff7d6">0</td><td style="background:#fff7d6">0</td><td style="background:#fde68a;font-weight:700">10</td>
+                        </tr>
+
+                        <tr>
+                            <td style="background:#fde68a;font-weight:700">40</td><td style="background:#fff7d6">0</td><td style="background:#fff7d6">0</td><td style="background:#fff7d6">0</td><td style="background:#fff7d6">0</td><td style="background:#fde68a;font-weight:700">40</td>
+                        </tr>
+
+                        <tr>
+                            <td style="background:#fde68a;font-weight:700">90</td><td style="background:#fff7d6">0</td><td style="background:#fff7d6">0</td><td style="background:#fff7d6">0</td><td style="background:#fff7d6">0</td><td style="background:#fde68a;font-weight:700">90</td>
+                        </tr>
+
+                        <tr>
+                            <td style="background:#fde68a;font-weight:700">30</td><td style="background:#fff7d6">0</td><td style="background:#fff7d6">0</td><td style="background:#fff7d6">0</td><td style="background:#fff7d6">0</td><td style="background:#fde68a;font-weight:700">30</td>
+                        </tr>
+
+                        <tr>
+                            <td style="background:#fde68a;font-weight:700">50</td><td style="background:#fff7d6">0</td><td style="background:#fff7d6">0</td><td style="background:#fff7d6">0</td><td style="background:#fff7d6">0</td><td style="background:#fde68a;font-weight:700">50</td>
+                        </tr>
+
+                        <tr><td colspan="6" style="height:40px;background:#fffbe6"></td></tr>
+                    </tbody>
+                    </table>
+            </section>
+                </div>
+            </div>
+</body>
+</html>
+

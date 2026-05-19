@@ -1,0 +1,1454 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fate GM Helper - 战役管理控制台</title>
+    <style>
+        /* 统一的CSS变量系统 */
+        :root {
+            /* 基础色彩 */
+            --color-primary: #6c5ce7;
+            --color-primary-light: #a29bfe;
+            --color-primary-dark: #5f3dc4;
+            --color-secondary: #00cec9;
+            --color-secondary-light: #81ecec;
+            --color-secondary-dark: #00838f;
+            --color-accent: #fdcb6e;
+            --color-accent-light: #ffeaa7;
+            --color-accent-dark: #e17055;
+            
+            /* 文本色彩 */
+            --color-text-primary: #2d3436;
+            --color-text-secondary: #636e72;
+            --color-text-tertiary: #b2bec3;
+            
+            /* 背景色彩 */
+            --color-bg-primary: #ffffff;
+            --color-bg-secondary: #f8f9fa;
+            --color-bg-tertiary: #e9ecef;
+            
+            /* 功能色彩 */
+            --color-success: #00b894;
+            --color-warning: #fdcb6e;
+            --color-danger: #d63031;
+            --color-info: #0984e3;
+            
+            /* 渐变色彩 */
+            --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --gradient-secondary: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            --gradient-tertiary: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            --gradient-accent: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+            
+            /* 边框色彩 */
+            --color-border: #dee2e6;
+            --color-border-light: #f1f3f4;
+            --color-border-dark: #adb5bd;
+            
+            /* 阴影效果 */
+            --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.05);
+            --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.15);
+            --shadow-xl: 0 16px 32px rgba(0, 0, 0, 0.2);
+            
+            /* 圆角效果 */
+            --radius-sm: 0.25rem;
+            --radius-md: 0.5rem;
+            --radius-lg: 0.75rem;
+            --radius-xl: 1rem;
+            --radius-full: 9999px;
+            
+            /* 间距系统 */
+            --spacing-xs: 0.25rem;
+            --spacing-sm: 0.5rem;
+            --spacing-md: 1rem;
+            --spacing-lg: 1.5rem;
+            --spacing-xl: 2rem;
+            --spacing-2xl: 3rem;
+            
+            /* 过渡效果 */
+            --transition-fast: 0.15s ease;
+            --transition-normal: 0.3s ease;
+            --transition-slow: 0.5s ease;
+        }
+        /* 基础样式 */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Microsoft YaHei', sans-serif;
+            background-color: var(--color-bg-secondary);
+            color: var(--color-text-secondary);
+            line-height: 1.6;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        /* 容器样式 */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 var(--spacing-lg);
+            flex: 1;
+        }
+        
+        /* ===== 顶部导航栏：全站统一 ===== */
+        .header {
+            background: var(--gradient-primary);
+            color: white;
+            padding: var(--spacing-md) var(--spacing-lg);
+            box-shadow: var(--shadow-md);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+        
+        .header-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: var(--spacing-md);
+        }
+        
+        .header-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: white;
+            margin: 0;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+        
+        .nav {
+            list-style: none;
+            display: flex;
+            gap: var(--spacing-md);
+            margin: 0;
+            padding: 0;
+            flex-wrap: wrap;
+        }
+        
+        .nav-link {
+            color: white;
+            text-decoration: none;
+            padding: var(--spacing-sm) var(--spacing-md);
+            border-radius: var(--radius-md);
+            font-weight: 500;
+            transition: all var(--transition-normal);
+            opacity: 0.9;
+        }
+        
+        .nav-link:hover {
+            opacity: 1;
+            background-color: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+        }
+        
+        .nav-link.active {
+            background-color: rgba(255, 255, 255, 0.3);
+            font-weight: 600;
+        }
+        
+        /* 额外的导航样式 */
+        .header-nav a:hover {
+            background-color: rgba(255, 255, 255, 0.2);
+            transform: translateY(-1px);
+        }
+        
+        .header-nav a.active {
+            background-color: rgba(255, 255, 255, 0.25);
+            font-weight: 500;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        /* 页脚样式 */
+        .footer {
+            background-color: var(--color-bg-secondary);
+            border-top: 1px solid var(--color-border);
+            padding: var(--spacing-lg) var(--spacing-xl);
+            text-align: center;
+            margin-top: var(--spacing-xl);
+        }
+        
+        .footer-text {
+            color: var(--color-text-tertiary);
+            font-size: 0.875rem;
+            margin: 0;
+        }
+        
+        /* 标题样式 */
+        h1, h2, h3, h4, h5, h6 {
+            margin-bottom: var(--spacing-md);
+            font-weight: 700;
+            line-height: 1.2;
+        }
+        
+        h1 {
+            font-size: 2rem;
+            color: var(--color-text-primary);
+        }
+        
+        h2 {
+            font-size: 1.75rem;
+            color: var(--color-text-primary);
+        }
+        
+        h3 {
+            font-size: 1.5rem;
+            color: var(--color-text-primary);
+        }
+        
+        /* 增强的标题样式 */
+        .header-title h1 {
+            margin: 0;
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--color-text-primary);
+            padding-bottom: var(--spacing-sm);
+            position: relative;
+        }
+        
+        .header-title h1::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: var(--gradient-primary);
+            border-radius: var(--radius-full);
+        }
+        
+        /* 卡片样式 */
+        .card {
+            background-color: var(--color-bg-primary);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-md);
+            margin-bottom: var(--spacing-xl);
+            overflow: hidden;
+            transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+        }
+        
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+        
+        .card-header {
+            padding: var(--spacing-md) var(--spacing-lg);
+            border-bottom: 1px solid var(--color-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: var(--color-bg-secondary);
+        }
+        
+        .card-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--color-text-primary);
+            margin: 0;
+        }
+        
+        .card-body {
+            padding: var(--spacing-lg);
+        }
+        
+        .card-body.p-6 {
+            padding: var(--spacing-lg);
+        }
+        
+        .card-footer {
+            padding: var(--spacing-md) var(--spacing-lg);
+            border-top: 1px solid var(--color-border);
+            background-color: var(--color-bg-secondary);
+        }
+        
+        /* 按钮样式 */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: var(--spacing-sm) var(--spacing-md);
+            border: 1px solid transparent;
+            border-radius: var(--radius-md);
+            font-weight: 500;
+            text-align: center;
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            text-decoration: none;
+        }
+        
+        .btn:focus {
+            outline: 2px solid var(--color-primary);
+            outline-offset: 2px;
+        }
+        
+        /* 渐变按钮 */
+        .btn-gradient {
+            background: var(--gradient-primary);
+            color: white;
+            border: none;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .btn-gradient:hover {
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-md);
+        }
+        
+        .btn-gradient::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transform: translateX(-100%);
+            transition: transform var(--transition-slow);
+        }
+        
+        .btn-gradient:hover::after {
+            transform: translateX(100%);
+        }
+        
+        /* 轮廓按钮 */
+        .btn-outline {
+            background: transparent;
+            border: 1px solid var(--color-primary);
+            color: var(--color-primary);
+        }
+        
+        .btn-outline:hover {
+            background: var(--color-primary);
+            color: white;
+        }
+        
+        /* 按钮大小 */
+        .btn-lg {
+            padding: var(--spacing-md) var(--spacing-xl);
+            font-size: 1.125rem;
+        }
+        
+        /* 辅助类 */
+        .text-center {
+            text-align: center;
+        }
+        
+        .text-secondary {
+            color: var(--color-text-secondary);
+        }
+        
+        .mb-1 {
+            margin-bottom: var(--spacing-xs);
+        }
+        
+        .mb-2 {
+            margin-bottom: var(--spacing-sm);
+        }
+        
+        .mb-3 {
+            margin-bottom: var(--spacing-md);
+        }
+        
+        .mb-4 {
+            margin-bottom: var(--spacing-lg);
+        }
+        
+        .mb-5 {
+            margin-bottom: var(--spacing-xl);
+        }
+        
+        /* 响应式设计 */
+        @media (max-width: 992px) {
+            .header-container {
+                flex-direction: column;
+                gap: var(--spacing-md);
+                text-align: center;
+            }
+            
+            .header-nav {
+                justify-content: center;
+                flex-wrap: wrap;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                padding: var(--spacing-md);
+            }
+            
+            .header {
+                padding: var(--spacing-md);
+            }
+            
+            .header-title {
+                font-size: 1.25rem;
+            }
+            
+            h1 {
+                font-size: 1.75rem;
+            }
+            
+            h2 {
+                font-size: 1.25rem;
+            }
+            
+            .card-body {
+                padding: var(--spacing-md);
+            }
+        }
+        
+        .btn-primary {
+            background-color: var(--primary-color);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background-color: var(--primary-hover);
+        }
+        
+        .btn-secondary {
+            background-color: var(--bg-primary);
+            color: var(--text-secondary);
+            border-color: var(--border-color);
+        }
+        
+        .btn-secondary:hover {
+            background-color: var(--bg-tertiary);
+            border-color: var(--border-hover);
+        }
+        
+        .btn-danger {
+            background-color: var(--danger-color);
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background-color: #dc2626;
+        }
+        
+        .btn-sm {
+            padding: var(--spacing-xs) var(--spacing-sm);
+            font-size: 0.75rem;
+        }
+        
+        .btn-lg {
+            padding: var(--spacing-md) var(--spacing-lg);
+            font-size: 1rem;
+        }
+        
+        /* 兼容旧的button类名 */
+        .button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: var(--spacing-sm) var(--spacing-md);
+            border: 1px solid transparent;
+            border-radius: var(--radius-md);
+            font-weight: 500;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .button-primary {
+            background-color: var(--primary-color);
+            color: white;
+        }
+        
+        .button-primary:hover {
+            background-color: var(--primary-hover);
+        }
+        
+        .button-secondary {
+            background-color: var(--bg-primary);
+            color: var(--text-secondary);
+            border-color: var(--border-color);
+        }
+        
+        .button-secondary:hover {
+            background-color: var(--bg-tertiary);
+            border-color: var(--border-hover);
+        }
+        
+        .button-danger {
+            background-color: var(--danger-color);
+            color: white;
+        }
+        
+        .button-danger:hover {
+            background-color: #dc2626;
+        }
+        
+        .button-small {
+            padding: var(--spacing-xs) var(--spacing-sm);
+            font-size: 0.75rem;
+        }
+        
+        .button-large {
+            padding: var(--spacing-md) var(--spacing-lg);
+            font-size: 1rem;
+        }
+        
+        /* 网格布局 */
+        .grid {
+            display: grid;
+            gap: var(--spacing-lg);
+            margin-bottom: var(--spacing-xl);
+        }
+        
+        .grid-cols-1 {
+            grid-template-columns: repeat(1, minmax(0, 1fr));
+        }
+        
+        .md\:grid-cols-2 {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        
+        .lg\:grid-cols-4 {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+        
+        /* 统计卡片样式 */
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-top: var(--spacing-sm);
+        }
+        
+        .text-blue-600 {
+            color: var(--primary-color);
+        }
+        
+        .text-green-600 {
+            color: var(--success-color);
+        }
+        
+        .text-purple-600 {
+            color: #7c3aed;
+        }
+        
+        .text-orange-600 {
+            color: #ea580c;
+        }
+        
+        /* 战役项样式 */
+        .campaign-item {
+            padding: var(--spacing-md);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            margin-bottom: var(--spacing-lg);
+            background-color: var(--bg-primary);
+            transition: all 0.2s;
+        }
+        
+        .campaign-item:hover {
+            border-color: var(--primary-color);
+            box-shadow: var(--shadow-md);
+        }
+        
+        /* 进度条样式 */
+        .progress-container {
+            width: 100%;
+            background-color: var(--border-color);
+            border-radius: var(--radius-full);
+            height: 0.625rem;
+            overflow: hidden;
+            margin-top: var(--spacing-sm);
+        }
+        
+        .progress-bar {
+            background-color: var(--primary-color);
+            height: 100%;
+            border-radius: var(--radius-full);
+            transition: width 0.3s;
+        }
+        
+        /* 活动项样式 */
+        .activity-item {
+            display: flex;
+            align-items: flex-start;
+            padding: var(--spacing-md);
+            border-radius: var(--radius-md);
+            transition: background-color 0.2s;
+        }
+        
+        .activity-item:hover {
+            background-color: var(--bg-secondary);
+        }
+        
+        /* 表单元素样式 */
+        .form-input {
+            width: 100%;
+            padding: var(--spacing-sm) var(--spacing-md);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            font-size: 1rem;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        
+        .form-input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+        
+        /* 兼容旧的input类名 */
+        .input {
+            width: 100%;
+            padding: var(--spacing-sm) var(--spacing-md);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            font-size: 1rem;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        
+        .input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+        
+        /* 表格样式 */
+        .overflow-x-auto {
+            overflow-x: auto;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: var(--bg-primary);
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+        }
+        
+        th {
+            text-align: left;
+            padding: var(--spacing-md) var(--spacing-lg);
+            background-color: var(--bg-tertiary);
+            color: var(--text-tertiary);
+            font-size: 0.875rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        th.text-right {
+            text-align: right;
+        }
+        
+        td {
+            padding: var(--spacing-md) var(--spacing-lg);
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        tr:hover {
+            background-color: var(--bg-secondary);
+        }
+        
+        tr:last-child td {
+            border-bottom: none;
+        }
+        
+        /* 徽章样式 */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: var(--spacing-xs) var(--spacing-sm);
+            border-radius: var(--radius-full);
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        
+        .badge-success {
+            background-color: #dcfce7;
+            color: var(--success-color);
+        }
+        
+        .badge-secondary {
+            background-color: var(--bg-tertiary);
+            color: var(--text-tertiary);
+        }
+        
+        /* 复选框样式 */
+        .form-checkbox {
+            width: 1rem;
+            height: 1rem;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+        }
+        
+        .form-checkbox:checked {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+        
+        /* 兼容旧的checkbox类名 */
+        .checkbox {
+            width: 1rem;
+            height: 1rem;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+        }
+        
+        .checkbox:checked {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+        
+        /* 图标样式 */
+        .icon {
+            width: 1rem;
+            height: 1rem;
+            margin-right: var(--spacing-sm);
+        }
+        
+        /* 对话框样式 */
+        .fixed {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+        }
+        
+        .bg-black {
+            background-color: black;
+        }
+        
+        .bg-opacity-50 {
+            opacity: 0.5;
+        }
+        
+        .z-50 {
+            z-index: 50;
+        }
+        
+        .max-w-md {
+            max-width: 28rem;
+        }
+        
+        /* 布局辅助类 */
+        .flex {
+            display: flex;
+        }
+        
+        .flex-col {
+            flex-direction: column;
+        }
+        
+        .sm\:flex-row {
+            flex-direction: row;
+        }
+        
+        .items-center {
+            align-items: center;
+        }
+        
+        .items-start {
+            align-items: flex-start;
+        }
+        
+        .justify-between {
+            justify-content: space-between;
+        }
+        
+        .justify-end {
+            justify-content: flex-end;
+        }
+        
+        .justify-center {
+            justify-content: center;
+        }
+        
+        .gap-4 {
+            gap: var(--spacing-md);
+        }
+        
+        .space-x-2 {
+            gap: var(--spacing-sm);
+        }
+        
+        .space-x-3 {
+            gap: 0.75rem;
+        }
+        
+        .space-y-4 > * + * {
+            margin-top: var(--spacing-md);
+        }
+        
+        .space-y-6 > * + * {
+            margin-top: var(--spacing-lg);
+        }
+        
+        .flex-1 {
+            flex: 1;
+        }
+        
+        .flex-shrink-0 {
+            flex-shrink: 0;
+        }
+        
+        /* 间距辅助类 */
+        .mb-2 {
+            margin-bottom: var(--spacing-sm);
+        }
+        
+        .mb-4 {
+            margin-bottom: var(--spacing-md);
+        }
+        
+        .mb-6 {
+            margin-bottom: var(--spacing-lg);
+        }
+        
+        
+        .mb-8 {
+            margin-bottom: var(--spacing-xl);
+        }
+        
+        .mt-8 {
+            margin-top: var(--spacing-xl);
+        }
+        
+        /* 文本样式 */
+        .text-center {
+            text-align: center;
+        }
+        
+        .text-right {
+            text-align: right;
+        }
+        
+        .text-lg {
+            font-size: 1.125rem;
+        }
+        
+        .text-sm {
+            font-size: 0.875rem;
+        }
+        
+        .text-xs {
+            font-size: 0.75rem;
+        }
+        
+        .font-medium {
+            font-weight: 500;
+        }
+        
+        .font-semibold {
+            font-weight: 600;
+        }
+        
+        .font-bold {
+            font-weight: 700;
+        }
+        
+        .text-gray-500 {
+            color: var(--text-tertiary);
+        }
+        
+        .text-gray-700 {
+            color: var(--text-secondary);
+        }
+        
+        .text-gray-800 {
+            color: #1f2937;
+        }
+        
+        .text-gray-900 {
+            color: var(--text-primary);
+        }
+        
+        /* 其他辅助类 */
+        .w-full {
+            width: 100%;
+        }
+        
+        .sm\:w-auto {
+            width: auto;
+        }
+        
+        .h-10 {
+            height: 2.5rem;
+        }
+        
+        .w-10 {
+            width: 2.5rem;
+        }
+        
+        .bg-gray-100 {
+            background-color: #f3f4f6;
+        }
+        
+        .bg-blue-100 {
+            background-color: #dbeafe;
+        }
+        
+        .rounded-full {
+            border-radius: 9999px;
+        }
+        
+        .px-2 {
+            padding-left: 0.5rem;
+            padding-right: 0.5rem;
+        }
+        
+        .py-1 {
+            padding-top: 0.25rem;
+            padding-bottom: 0.25rem;
+        }
+        
+        .py-8 {
+            padding-top: 2rem;
+            padding-bottom: 2rem;
+        }
+        
+        .ml-1 {
+            margin-left: var(--spacing-xs);
+        }
+        
+        .ml-4 {
+            margin-left: var(--spacing-md);
+        }
+        
+        .pb-2 {
+            padding-bottom: var(--spacing-sm);
+        }
+        
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .header-nav {
+                gap: var(--spacing-sm);
+            }
+            
+            .header-nav a {
+                padding: var(--spacing-xs) var(--spacing-sm);
+                font-size: 0.875rem;
+            }
+            
+            .container {
+                padding: var(--spacing-md);
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 标题栏 -->
+    <header class="header">
+        <div class="header-content">
+            <h1 class="header-title">Fate GM助手</h1>
+            <nav>
+                <ul class="nav">
+                    <li><a href="index.html" class="nav-link">首页</a></li>
+                    <li><a href="BattleControl.html" class="nav-link">战斗控制</a></li>
+                    <li><a href="BattleSheet.html" class="nav-link">战斗表格</a></li>
+                    <li><a href="CharacterCardUpload.html" class="nav-link">角色卡上传</a></li>
+                    <li><a href="DashboardCampaign.html" class="nav-link active">战役仪表板</a></li>
+                    <li><a href="SkillRecord.html" class="nav-link">技能记录</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+    <div class="container dashboard-campaign">
+        <h1>战役管理控制台</h1>
+        
+        <!-- 统计卡片区域 -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div class="card">
+                <div class="card-body p-6">
+                    <h3 class="text-sm font-medium text-gray-500 mb-2">活跃战役</h3>
+                    <div class="stat-value text-3xl font-bold text-blue-600">2</div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-body p-6">
+                    <h3 class="text-sm font-medium text-gray-500 mb-2">已完成战役</h3>
+                    <div class="stat-value text-3xl font-bold text-green-600">1</div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-body p-6">
+                    <h3 class="text-sm font-medium text-gray-500 mb-2">总事件数</h3>
+                    <div class="stat-value text-3xl font-bold text-purple-600">45</div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-body p-6">
+                    <h3 class="text-sm font-medium text-gray-500 mb-2">平均持续时间</h3>
+                    <div class="stat-value text-3xl font-bold text-orange-600">15 天</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 进行中的战役 -->
+        <div class="card mb-8">
+            <div class="card-header">
+                <h2 class="card-title">进行中的战役</h2>
+            </div>
+            <div class="card-body">
+                <div class="space-y-6">
+                    <!-- 模拟战役数据 -->
+                    <div class="campaign-item">
+                        <div class="flex justify-between items-start mb-2">
+                            <h3 class="text-lg font-semibold text-gray-900">暗影迷城</h3>
+                            <span class="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-800">进行中</span>
+                        </div>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                            <div>
+                                <span class="text-sm text-gray-500">开始日期:</span>
+                                <span class="text-sm ml-1">2023-06-15</span>
+                            </div>
+                            <div>
+                                <span class="text-sm text-gray-500">结束日期:</span>
+                                <span class="text-sm ml-1">进行中</span>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <div class="flex justify-between text-sm mb-1">
+                                <span>完成进度</span>
+                                <span>65%</span>
+                            </div>
+                            <div class="progress-container">
+                                <div class="progress-bar" style="width: 65%"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="flex justify-end space-x-3">
+                            <button class="button button-secondary button-small" onclick="alert('查看战役详情')">查看详情</button>
+                            <button class="button button-primary button-small" onclick="alert('导出战役')">导出</button>
+                            <button class="button button-secondary button-small" onclick="loadActionHistory(1)">查看行动记录</button>
+                        </div>
+                    </div>
+                    
+                    <div class="campaign-item">
+                        <div class="flex justify-between items-start mb-2">
+                            <h3 class="text-lg font-semibold text-gray-900">星际探险</h3>
+                            <span class="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-800">进行中</span>
+                        </div>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                            <div>
+                                <span class="text-sm text-gray-500">开始日期:</span>
+                                <span class="text-sm ml-1">2023-11-01</span>
+                            </div>
+                            <div>
+                                <span class="text-sm text-gray-500">结束日期:</span>
+                                <span class="text-sm ml-1">进行中</span>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <div class="flex justify-between text-sm mb-1">
+                                <span>完成进度</span>
+                                <span>35%</span>
+                            </div>
+                            <div class="progress-container">
+                                <div class="progress-bar" style="width: 35%"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="flex justify-end space-x-3">
+                            <button class="button button-secondary button-small" onclick="alert('查看战役详情')">查看详情</button>
+                            <button class="button button-primary button-small" onclick="alert('导出战役')">导出</button>
+                            <button class="button button-secondary button-small" onclick="loadActionHistory(2)">查看行动记录</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 最近活动 -->
+        <div class="card mb-8">
+            <div class="card-header">
+                <h2 class="card-title">最近活动</h2>
+            </div>
+            <div class="card-body">
+                <div class="space-y-4">
+                    <!-- 模拟活动数据 -->
+                    <div class="activity-item">
+                        <div class="flex-shrink-0 h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600">
+                            <svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <polyline points="12 6 12 12 16 14"></polyline>
+                            </svg>
+                        </div>
+                        <div class="ml-4 flex-1">
+                            <p class="text-sm text-gray-700">战役开始 - 暗影迷城</p>
+                            <p class="text-xs text-gray-500 mt-1">今天 10:00 • DM_GM</p>
+                        </div>
+                    </div>
+                    
+                    <div class="activity-item">
+                        <div class="flex-shrink-0 h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600">
+                            <svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <polyline points="12 6 12 12 16 14"></polyline>
+                            </svg>
+                        </div>
+                        <div class="ml-4 flex-1">
+                            <p class="text-sm text-gray-700">遭遇战 - 星际探险</p>
+                            <p class="text-xs text-gray-500 mt-1">昨天 16:30 • DM_GM</p>
+                        </div>
+                    </div>
+                    
+                    <div class="activity-item">
+                        <div class="flex-shrink-0 h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600">
+                            <svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <polyline points="12 6 12 12 16 14"></polyline>
+                            </svg>
+                        </div>
+                        <div class="ml-4 flex-1">
+                            <p class="text-sm text-gray-700">任务完成 - 魔法学院</p>
+                            <p class="text-xs text-gray-500 mt-1">3天前 • 玩家A</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 行动记录（可通过战役条目查看） -->
+        <div class="card mb-8" id="actionHistoryCard" style="display:none;">
+            <div class="card-header">
+                <h2 class="card-title">行动记录</h2>
+            </div>
+            <div class="card-body">
+                <div id="actionHistoryContainer" class="space-y-4">
+                    <!-- 动态加载历史记录 -->
+                </div>
+            </div>
+        </div>
+        
+        <!-- 战役列表管理 -->
+        <div class="card mb-6">
+            <div class="card-header pb-2">
+                <h2 class="card-title">搜索和筛选</h2>
+            </div>
+            <div class="card-body">
+                <div class="flex flex-col sm:flex-row gap-4">
+                    <div class="flex-1">
+                        <input 
+                            type="text" 
+                            class="input" 
+                            placeholder="搜索战役名称或描述..."
+                            oninput="filterCampaigns(this.value)"
+                        />
+                    </div>
+                    <button class="button button-primary" onclick="alert('创建战役')">
+                        <svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                        创建战役
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">所有战役</h2>
+                <button id="deleteSelectedBtn" class="button button-danger" onclick="showDeleteDialog()">
+                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    </svg>
+                    删除选中 (<span id="selectedCount">0</span>)
+                </button>
+            </div>
+            <div class="card-body">
+                <div class="overflow-x-auto">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>
+                                    <input type="checkbox" class="checkbox" id="selectAll" onclick="toggleSelectAll()" />
+                                </th>
+                                <th>名称</th>
+                                <th>描述</th>
+                                <th>开始日期</th>
+                                <th>结束日期</th>
+                                <th>状态</th>
+                                <th class="text-right">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="campaignTableBody">
+                            <!-- 模拟数据 -->
+                            <tr>
+                                <td>
+                                    <input type="checkbox" class="checkbox campaign-checkbox" data-id="1" onclick="updateSelectedCount()" />
+                                </td>
+                                <td class="font-medium text-gray-900">暗影迷城</td>
+                                <td>探索被遗忘的古代城市，揭示隐藏的秘密</td>
+                                <td>2023-06-15</td>
+                                <td>进行中</td>
+                                <td><span class="badge badge-success">进行中</span></td>
+                                <td class="text-right">
+                                    <div class="flex justify-end space-x-2">
+                                        <button class="button button-secondary button-small" onclick="alert('查看战役')">查看</button>
+                                        <button class="button button-secondary button-small" onclick="alert('编辑战役')">编辑</button>
+                                        <button class="button button-primary button-small" onclick="alert('导出战役')">导出</button>
+                                        <button class="button button-secondary button-small" onclick="loadActionHistory(1)">查看行动记录</button>
+                                        <button class="button button-danger button-small" onclick="setSingleDelete(1)">删除</button>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>
+                                    <input type="checkbox" class="checkbox campaign-checkbox" data-id="2" onclick="updateSelectedCount()" />
+                                </td>
+                                <td class="font-medium text-gray-900">龙与地下城</td>
+                                <td>寻找失落的宝藏，面对强大的龙族</td>
+                                <td>2023-04-10</td>
+                                <td>2023-10-20</td>
+                                <td><span class="badge badge-secondary">已完成</span></td>
+                                <td class="text-right">
+                                    <div class="flex justify-end space-x-2">
+                                        <button class="button button-secondary button-small" onclick="alert('查看战役')">查看</button>
+                                        <button class="button button-secondary button-small" onclick="alert('编辑战役')">编辑</button>
+                                        <button class="button button-primary button-small" onclick="alert('导出战役')">导出</button>
+                                        <button class="button button-secondary button-small" onclick="loadActionHistory(2)">查看行动记录</button>
+                                        <button class="button button-danger button-small" onclick="setSingleDelete(2)">删除</button>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>
+                                    <input type="checkbox" class="checkbox campaign-checkbox" data-id="3" onclick="updateSelectedCount()" />
+                                </td>
+                                <td class="font-medium text-gray-900">星际探险</td>
+                                <td>穿越宇宙，探索未知星球，面对外星文明</td>
+                                <td>2023-11-01</td>
+                                <td>进行中</td>
+                                <td><span class="badge badge-success">进行中</span></td>
+                                <td class="text-right">
+                                    <div class="flex justify-end space-x-2">
+                                        <button class="button button-secondary button-small" onclick="alert('查看战役')">查看</button>
+                                        <button class="button button-secondary button-small" onclick="alert('编辑战役')">编辑</button>
+                                        <button class="button button-primary button-small" onclick="alert('导出战役')">导出</button>
+                                        <button class="button button-secondary button-small" onclick="loadActionHistory(3)">查看行动记录</button>
+                                        <button class="button button-danger button-small" onclick="setSingleDelete(3)">删除</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div id="noData" class="text-center py-8" style="display: none;">
+                    <span class="text-gray-500">没有找到匹配的战役</span>
+                </div>
+            </div>
+            <div class="card-footer">
+                <div class="text-sm text-gray-500">
+                    显示 <span id="filteredCount">3</span> 个战役（共 3 个）
+                </div>
+            </div>
+        </div>
+        
+        <div class="flex justify-center mt-8">
+            <button class="button button-primary button-large" onclick="alert('创建新战役')">
+                <svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+                创建新战役
+            </button>
+        </div>
+    </div>
+    
+    <!-- 删除确认对话框 -->
+    <div id="deleteDialog" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" style="display: none;">
+        <div class="card w-full max-w-md">
+            <div class="card-header">
+                <h2 class="card-title">确认删除</h2>
+            </div>
+            <div class="card-body">
+                <p>你确定要删除选中的 <span id="dialogSelectedCount">1</span> 个战役吗？此操作不可撤销。</p>
+            </div>
+            <div class="card-footer">
+                <div class="flex justify-end space-x-3">
+                    <button class="button button-secondary" onclick="hideDeleteDialog()">取消</button>
+                    <button class="button button-danger" onclick="confirmDelete()">确认删除</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // 初始化选中项
+        let selectedCampaigns = [];
+        let singleDeleteId = null;
+        
+        // 更新选中数量
+        function updateSelectedCount() {
+            const checkboxes = document.querySelectorAll('.campaign-checkbox:checked');
+            selectedCampaigns = Array.from(checkboxes).map(cb => cb.dataset.id);
+            document.getElementById('selectedCount').textContent = selectedCampaigns.length;
+            
+            // 更新全选框状态
+            const allCheckboxes = document.querySelectorAll('.campaign-checkbox');
+            document.getElementById('selectAll').checked = checkboxes.length === allCheckboxes.length && allCheckboxes.length > 0;
+        }
+        
+        // 全选/取消全选
+        function toggleSelectAll() {
+            const selectAll = document.getElementById('selectAll');
+            const checkboxes = document.querySelectorAll('.campaign-checkbox');
+            
+            checkboxes.forEach(cb => {
+                cb.checked = selectAll.checked;
+            });
+            
+            updateSelectedCount();
+        }
+        
+        // 设置单个删除
+        function setSingleDelete(id) {
+            singleDeleteId = id;
+            const checkbox = document.querySelector(`.campaign-checkbox[data-id="${id}"]`);
+            if (checkbox) {
+                checkbox.checked = true;
+            }
+            updateSelectedCount();
+            showDeleteDialog();
+        }
+        
+        // 显示删除对话框
+        function showDeleteDialog() {
+            updateSelectedCount();
+            document.getElementById('dialogSelectedCount').textContent = selectedCampaigns.length;
+            document.getElementById('deleteDialog').style.display = 'flex';
+        }
+        
+        // 隐藏删除对话框
+        function hideDeleteDialog() {
+            document.getElementById('deleteDialog').style.display = 'none';
+            singleDeleteId = null;
+        }
+        
+        // 确认删除
+        function confirmDelete() {
+            alert(`删除选中的 ${selectedCampaigns.length} 个战役`);
+            // 重置状态
+            hideDeleteDialog();
+            const checkboxes = document.querySelectorAll('.campaign-checkbox');
+            checkboxes.forEach(cb => {
+                cb.checked = false;
+            });
+            document.getElementById('selectAll').checked = false;
+            updateSelectedCount();
+        }
+        
+        // 加载并显示指定战役的行动历史
+        async function loadActionHistory(campaignId) {
+            const card = document.getElementById('actionHistoryCard');
+            const container = document.getElementById('actionHistoryContainer');
+            container.innerHTML = '<p class="text-sm text-gray-500">正在加载...</p>';
+            card.style.display = '';
+            try {
+                const res = await fetch(`/api/rounds/history?campaignId=${encodeURIComponent(campaignId)}`);
+                if (!res.ok) throw new Error('请求失败：' + res.status);
+                const list = await res.json();
+                if (!Array.isArray(list) || list.length === 0) {
+                    container.innerHTML = '<p class="text-sm text-gray-500">未找到历史记录。</p>';
+                    return;
+                }
+                // 渲染每条回合记录
+                container.innerHTML = '';
+                list.forEach(h => {
+                    const entry = document.createElement('div');
+                    entry.className = 'history-entry';
+                    entry.style = 'border:1px solid var(--border-color);padding:12px;border-radius:8px;background:#fff;';
+                    const header = document.createElement('div');
+                    header.style = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;';
+                    header.innerHTML = `<div><strong>第${h.roundNumber}回合</strong> ｜ ${h.closedAt ? new Date(h.closedAt).toLocaleString() : '-'}</div>`;
+                    entry.appendChild(header);
+                    // 简单表格展示 actionOrder (if present)
+                    if (h.actionOrder && Array.isArray(h.actionOrder)) {
+                        const tbl = document.createElement('table');
+                        tbl.style = 'width:100%;border-collapse:collapse;margin-top:6px;';
+                        const thead = document.createElement('thead');
+                        thead.innerHTML = '<tr><th style="text-align:left;padding:8px;background:#f3f4f6;">类别</th><th style="text-align:left;padding:8px;background:#f3f4f6;">内容</th></tr>';
+                        tbl.appendChild(thead);
+                        const tbody = document.createElement('tbody');
+                        h.actionOrder.forEach(a => {
+                            const tr = document.createElement('tr');
+                            tr.innerHTML = `<td style="padding:8px;border-top:1px solid var(--border-color);width:160px;">${a.type || '-'}</td><td style="padding:8px;border-top:1px solid var(--border-color);">${(a.actions || []).map(x => x || '-').join(' | ')}</td>`;
+                            tbody.appendChild(tr);
+                        });
+                        tbl.appendChild(tbody);
+                        entry.appendChild(tbl);
+                    } else {
+                        const p = document.createElement('p');
+                        p.className = 'text-sm text-gray-500';
+                        p.textContent = '无行动顺序数据';
+                        entry.appendChild(p);
+                    }
+                    container.appendChild(entry);
+                });
+            } catch (err) {
+                container.innerHTML = `<p class="text-sm text-gray-500">加载失败：${err.message}</p>`;
+            }
+        }
+        
+        // 筛选战役
+        function filterCampaigns(term) {
+            term = term.toLowerCase();
+            const rows = document.querySelectorAll('#campaignTableBody tr');
+            let visibleCount = 0;
+            
+            rows.forEach(row => {
+                const name = row.querySelector('td:nth-child(2)').textContent.toLowerCase();
+                const description = row.querySelector('td:nth-child(3)').textContent.toLowerCase();
+                
+                if (name.includes(term) || description.includes(term)) {
+                    row.style.display = '';
+                    visibleCount++;
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+            
+            document.getElementById('filteredCount').textContent = visibleCount;
+            document.getElementById('noData').style.display = visibleCount === 0 ? 'block' : 'none';
+        }
+        
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            updateSelectedCount();
+            
+            // 导航激活状态
+            const currentPath = window.location.pathname;
+            const navLinks = document.querySelectorAll('.header-nav a');
+            navLinks.forEach(link => {
+                if (link.getAttribute('href') === currentPath.split('/').pop()) {
+                    link.classList.add('active');
+                } else {
+                    link.classList.remove('active');
+                }
+            });
+        });
+    </script>
+    
+    <!-- 页脚 -->
+    <footer class="footer">
+        <div class="footer-text">
+            Fate GM Helper - 为游戏管理员提供的便捷工具
+        </div>
+    </footer>
+</body>
+</html>
