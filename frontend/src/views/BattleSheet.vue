@@ -1,358 +1,418 @@
-<template>
-  <section class="battle-sheet">
-    <div class="battle-selector">
-      <div class="campaign-select">
-        <label for="campaign-select">选择战役：</label>
-        <select id="campaign-select" v-model="selectedCampaignId" @change="onCampaignChange">
-          <option value="">未打开战役</option>
-          <option v-for="campaign in campaigns" :key="campaign.id" :value="campaign.id">
-            {{ campaign.name }}
-          </option>
-        </select>
-      </div>
-      <div class="location-select" v-if="selectedCampaignId">
-        <label for="location-select">选择灵脉：</label>
-        <select id="location-select" v-model="selectedLeylineId" @change="onLeylineChange">
-          <option value="">请选择灵脉...</option>
-          <option v-for="leyline in leylines" :key="leyline.id" :value="leyline.id">
-            {{ leyline.name }}
-          </option>
-        </select>
-      </div>
-    </div>
-    <div class="leyline-info" v-if="selectedLeyline && selectedLeylineId">
-      <h2>灵脉信息</h2>
-      <div class="info-item">
-        <span class="label">灵脉名称：</span>
-        <span class="value">{{ selectedLeyline.name }}</span>
-      </div>
-      <div class="info-item">
-        <span class="label">战场宽度：</span>
-        <span class="value">{{ selectedLeyline.battlefieldWidth }}</span>
-      </div>
-      <div class="info-item">
-        <span class="label">人流量：</span>
-        <span class="value">{{ selectedLeyline.populationFlow }}</span>
-      </div>
-      <div class="info-item" v-if="selectedLeyline.assignedCharacterIds && selectedLeyline.assignedCharacterIds.length > 0">
-        <span class="label">该灵脉的人：</span>
-        <span class="value">{{ selectedLeyline.assignedCharacterIds.join(', ') }}</span>
-      </div>
-    </div>
-    <div class="battle-table-controls">
-      <button @click="addPosition">+ 添加战斗位</button>
-      <button @click="removePosition" :disabled="positions <= 3">- 删除战斗位</button>
-    </div>
-    <h1>战斗表格</h1>
-    <table class="battle-table">
-      <thead>
-        <tr>
-          <td></td>
-          <th :colspan="positions + 1" class="red-team">红方</th>
-          <th :colspan="positions + 1" class="blue-team">蓝方</th>
-        </tr>
-        <tr>
-          <td></td>
-          <th v-for="(pos, index) in positionNames" :key="'red-'+index">{{ pos }}</th>
-          <th class="red-team">合计</th>
-          <th v-for="(pos, index) in positionNames" :key="'blue-'+index">{{ pos }}</th>
-          <th class="blue-team">合计</th>
-        </tr>
-        <tr>
-          <th>参战人员</th>
-          <td v-for="(pos, index) in positionNames" :key="'red-cell-'+index">
-            <select v-model="redTeam[index]" @change="onCharacterSelect($event, 'red', index)">
-              <option value="">请选择角色</option>
-              <option v-for="char in characters" :key="char.id" :value="char.id">
-                {{ char.code }}
-              </option>
-            </select>
-          </td>
-          <td class="red-team"></td>
-          <td v-for="(pos, index) in positionNames" :key="'blue-cell-'+index">
-            <select v-model="blueTeam[index]" @change="onCharacterSelect($event, 'blue', index)">
-              <option value="">请选择角色</option>
-              <option v-for="char in characters" :key="char.id" :value="char.id">
-                {{ char.code }}
-              </option>
-            </select>
-          </td>
-          <td class="blue-team"></td>
-        </tr>
-        <tr v-for="stat in stats" :key="stat">
-          <td class="row-label">{{ stat }}</td>
-          <td v-for="(pos, index) in positionNames" :key="'red-stat-'+index">
-            <div v-if="redTeam[index]">
-              {{ getCharacterStat(redTeam[index], stat) }}
-            </div>
-          </td>
-          <td class="red-team">
-            <div v-if="redTeam.some(id => id)">
-              {{ calculateTotal('red', stat) }}
-            </div>
-          </td>
-          <td v-for="(pos, index) in positionNames" :key="'blue-stat-'+index">
-            <div v-if="blueTeam[index]">
-              {{ getCharacterStat(blueTeam[index], stat) }}
-            </div>
-          </td>
-          <td class="blue-team">
-            <div v-if="blueTeam.some(id => id)">
-              {{ calculateTotal('blue', stat) }}
-            </div>
-          </td>
-        </tr>
-      </thead>
-    </table>
-  </section>
-</template>
-
 <script setup>
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { usePersistedRef } from '../composables/usePersistedRef'
 
+// ---- 持久化状态（刷新后自动恢复） ----
+const selectedCampaignId = usePersistedRef('battle-sheet:campaignId', '')
+const selectedLeylineId = usePersistedRef('battle-sheet:leylineId', '')
+const positions = usePersistedRef('battle-sheet:positions', 3)
+const redTeam = usePersistedRef('battle-sheet:redTeam', ['', '', '', '', '', ''])
+const blueTeam = usePersistedRef('battle-sheet:blueTeam', ['', '', '', '', '', ''])
+
+// ---- 非持久化状态 ----
 const campaigns = ref([])
 const leylines = ref([])
 const characters = ref([])
-const selectedCampaignId = ref('')
-const selectedLeylineId = ref('')
+const loading = ref(false)
 
-const positions = ref(3)
-
+// 动态生成战斗位名称：第一个是主力位，最后一个是支援位，中间全部是辅助位
 const positionNames = computed(() => {
-  const base = ['主力位', '辅助位', '支援位']
-  if (positions.value === 4) {
-    return [base[0], base[1], '辅助位', base[2]]
-  } else if (positions.value === 5) {
-    return [base[0], base[1], '辅助位', '辅助位', base[2]]
-  } else if (positions.value === 6) {
-    return [base[0], base[1], '辅助位', '辅助位', '辅助位', base[2]]
-  }
-  return base.slice(0, positions.value)
+  const n = positions.value
+  if (n <= 1) return ['主力位']
+  const result = ['主力位']
+  for (let i = 1; i < n - 1; i++) result.push('辅助位')
+  result.push('支援位')
+  return result
 })
 
 const stats = ['等级', '筋力', '耐力', '敏捷', '魔力', '幸运', '宝具']
 
-const redTeam = ref(Array(6).fill(''))
-const blueTeam = ref(Array(6).fill(''))
+const selectedLeyline = computed(() => {
+  if (!selectedLeylineId.value) return null
+  return leylines.value.find(l => l.id === parseInt(selectedLeylineId.value))
+})
 
-const fetchCampaigns = async () => {
+// ---- API 调用 ----
+async function fetchCampaigns() {
   try {
-    const response = await fetch('/api/campaigns')
-    if (response.ok) {
-      campaigns.value = await response.json()
-    }
-  } catch (error) {
-    console.error('获取战役列表失败:', error)
+    const res = await fetch('/api/campaigns')
+    if (res.ok) campaigns.value = await res.json()
+  } catch (err) {
+    console.error('获取战役列表失败:', err)
   }
 }
 
-const fetchLeylines = async (campaignId) => {
+async function fetchLeylines(campaignId) {
   try {
-    const response = await fetch(`/api/leylines?campaignId=${campaignId}`)
-    if (response.ok) {
-      leylines.value = await response.json()
-    }
-  } catch (error) {
-    console.error('获取灵脉列表失败:', error)
+    const res = await fetch(`/api/leylines?campaignId=${campaignId}`)
+    if (res.ok) leylines.value = await res.json()
+  } catch (err) {
+    console.error('获取灵脉列表失败:', err)
   }
 }
 
-const fetchCharacters = async (campaignId) => {
+async function fetchCharacters(campaignId) {
+  loading.value = true
   try {
-    const response = await fetch(`/api/character-cards?campaignId=${campaignId}`)
-    if (response.ok) {
-      const data = await response.json()
+    const res = await fetch(`/api/character-cards?campaignId=${campaignId}&size=200`)
+    if (res.ok) {
+      const data = await res.json()
       characters.value = data.content || data
     }
-  } catch (error) {
-    console.error('获取角色列表失败:', error)
+  } catch (err) {
+    console.error('获取角色列表失败:', err)
+  } finally {
+    loading.value = false
   }
 }
 
-const onCampaignChange = async () => {
+async function onCampaignChange() {
   selectedLeylineId.value = ''
   leylines.value = []
   characters.value = []
-  redTeam.value = Array(6).fill('')
-  blueTeam.value = Array(6).fill('')
   if (selectedCampaignId.value) {
     await fetchLeylines(selectedCampaignId.value)
     await fetchCharacters(selectedCampaignId.value)
   }
 }
 
-const onLeylineChange = () => {
-  if (!selectedLeylineId.value) {
-    selectedLeyline.value = null
-    return
-  }
-  selectedLeyline.value = leylines.value.find(l => l.id === parseInt(selectedLeylineId.value))
-}
-
-const selectedLeyline = ref(null)
-
-const addPosition = () => {
-  if (positions.value < 6) {
-    positions.value++
-  }
-}
-
-const removePosition = () => {
-  if (positions.value > 3) {
-    positions.value--
-  }
-}
-
-const onCharacterSelect = (event, team, index) => {
-  const selectedValue = event.target.value
+function onCharacterSelect(team, index, event) {
+  const value = event.target.value
   if (team === 'red') {
-    redTeam.value[index] = selectedValue
+    // 创建新数组触发响应式（usePersistedRef 需要整体替换才能触发 watch）
+    const newArr = [...redTeam.value]
+    newArr[index] = value
+    redTeam.value = newArr
   } else {
-    blueTeam.value[index] = selectedValue
+    const newArr = [...blueTeam.value]
+    newArr[index] = value
+    blueTeam.value = newArr
   }
 }
 
-const getCharacterStat = (charId, statName) => {
+function getCharacterStat(charId, statName) {
   const char = characters.value.find(c => c.id === parseInt(charId))
   if (!char) return ''
-  
   const statMap = {
-    '等级': 'level',
-    '筋力': 'strength',
-    '耐力': 'endurance',
-    '敏捷': 'agility',
-    '魔力': 'mana',
-    '幸运': 'luck',
-    '宝具': 'noblePhantasm'
+    '等级': 'level', '筋力': 'strength', '耐力': 'endurance',
+    '敏捷': 'agility', '魔力': 'mana', '幸运': 'luck', '宝具': 'noblePhantasm'
   }
-  
-  const statKey = statMap[statName]
-  if (statKey && char.totalStats && char.totalStats[statKey] !== undefined) {
-    return char.totalStats[statKey]
-  }
-  return ''
+  const key = statMap[statName]
+  return (key && char.totalStats && char.totalStats[key] !== undefined)
+    ? char.totalStats[key]
+    : ''
 }
 
-const calculateTotal = (team, statName) => {
+function calculateTotal(team, statName) {
   const teamData = team === 'red' ? redTeam.value : blueTeam.value
   const statMap = {
-    '等级': 'level',
-    '筋力': 'strength',
-    '耐力': 'endurance',
-    '敏捷': 'agility',
-    '魔力': 'mana',
-    '幸运': 'luck',
-    '宝具': 'noblePhantasm'
+    '等级': 'level', '筋力': 'strength', '耐力': 'endurance',
+    '敏捷': 'agility', '魔力': 'mana', '幸运': 'luck', '宝具': 'noblePhantasm'
   }
-  
-  const statKey = statMap[statName]
+  const key = statMap[statName]
   let total = 0
-  
-  teamData.forEach((charId, index) => {
-    if (charId) {
-      const positionName = positionNames.value[index]
-      const char = characters.value.find(c => c.id === parseInt(charId))
-      if (char && char.totalStats && char.totalStats[statKey] !== undefined) {
-        const value = char.totalStats[statKey]
-        if (positionName === '主力位') {
-          total += value
-        } else if (positionName === '辅助位') {
-          total += Math.floor(value / 2)
-        }
-      }
-    }
+  teamData.forEach((charId, i) => {
+    if (!charId) return
+    const char = characters.value.find(c => c.id === parseInt(charId))
+    if (!char || !char.totalStats || char.totalStats[key] === undefined) return
+    const val = char.totalStats[key]
+    const posName = positionNames.value[i]
+    if (posName === '主力位' || posName === '支援位') total += val
+    else total += Math.floor(val / 2)
   })
-  
   return total
 }
 
-onMounted(() => {
-  fetchCampaigns()
+onMounted(async () => {
+  await fetchCampaigns()
+  // 如果已持久化了战役ID，自动加载对应数据
+  if (selectedCampaignId.value) {
+    await fetchLeylines(selectedCampaignId.value)
+    await fetchCharacters(selectedCampaignId.value)
+  }
 })
 </script>
 
+<template>
+  <section class="page-card">
+    <div class="page-head">
+      <div>
+        <h1 class="page-title">战斗表格</h1>
+        <p class="page-subtitle">选择战役和灵脉，配置红蓝双方参战人员，自动计算属性合计</p>
+      </div>
+    </div>
+
+    <!-- 选择器 -->
+    <div class="selector-bar">
+      <div class="selector-item">
+        <label>战役</label>
+        <select v-model="selectedCampaignId" @change="onCampaignChange">
+          <option value="">-- 选择战役 --</option>
+          <option v-for="c in campaigns" :key="c.id" :value="c.id">{{ c.name }}</option>
+        </select>
+      </div>
+      <div class="selector-item" v-if="selectedCampaignId">
+        <label>灵脉</label>
+        <select v-model="selectedLeylineId">
+          <option value="">-- 选择灵脉 --</option>
+          <option v-for="l in leylines" :key="l.id" :value="l.id">{{ l.name }}</option>
+        </select>
+      </div>
+      <div class="selector-item selector-positions">
+        <label>战斗位数量</label>
+        <div class="positions-control">
+          <button @click="positions > 3 ? positions-- : null" :disabled="positions <= 3">−</button>
+          <span class="positions-num">{{ positions }}</span>
+          <button @click="positions < 6 ? positions++ : null" :disabled="positions >= 6">+</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 灵脉信息 -->
+    <div v-if="selectedLeyline && selectedLeylineId" class="leyline-card">
+      <div class="leyline-header">{{ selectedLeyline.name }}</div>
+      <div class="leyline-stats">
+        <div class="leyline-stat">
+          <span class="leyline-stat-label">战场宽度</span>
+          <span class="leyline-stat-value">{{ selectedLeyline.battlefieldWidth }}</span>
+        </div>
+        <div class="leyline-stat">
+          <span class="leyline-stat-label">人流量</span>
+          <span class="leyline-stat-value">{{ selectedLeyline.populationFlow }}</span>
+        </div>
+        <div class="leyline-stat" v-if="selectedLeyline.assignedCharacterIds?.length">
+          <span class="leyline-stat-label">驻留角色</span>
+          <span class="leyline-stat-value">{{ selectedLeyline.assignedCharacterIds.join(', ') }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 战斗表格 -->
+    <div v-if="selectedCampaignId && characters.length" class="table-container">
+      <table class="battle-table">
+        <thead>
+          <tr>
+            <th class="col-label"></th>
+            <th :colspan="positions + 1" class="team-header red-header">🔴 红方</th>
+            <th :colspan="positions + 1" class="team-header blue-header">🔵 蓝方</th>
+          </tr>
+          <tr>
+            <th class="col-label"></th>
+            <th v-for="(name, i) in positionNames" :key="'rh-'+i" class="col-pos">{{ name }}</th>
+            <th class="col-total red-total">合计</th>
+            <th v-for="(name, i) in positionNames" :key="'bh-'+i" class="col-pos">{{ name }}</th>
+            <th class="col-total blue-total">合计</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="col-label">参战人员</td>
+            <td v-for="(_, i) in positionNames" :key="'rp-'+i">
+              <select
+                :value="redTeam[i]"
+                @change="e => onCharacterSelect('red', i, e)"
+                class="char-select"
+              >
+                <option value="">--</option>
+                <option v-for="c in characters" :key="'rr-'+c.id" :value="c.id">{{ c.code }}</option>
+              </select>
+            </td>
+            <td class="col-total"></td>
+            <td v-for="(_, i) in positionNames" :key="'bp-'+i">
+              <select
+                :value="blueTeam[i]"
+                @change="e => onCharacterSelect('blue', i, e)"
+                class="char-select"
+              >
+                <option value="">--</option>
+                <option v-for="c in characters" :key="'br-'+c.id" :value="c.id">{{ c.code }}</option>
+              </select>
+            </td>
+            <td class="col-total"></td>
+          </tr>
+          <tr v-for="statName in stats" :key="statName" class="stat-row">
+            <td class="col-label">{{ statName }}</td>
+            <td v-for="(_, i) in positionNames" :key="'rs-'+i" class="col-stat">
+              {{ redTeam[i] ? getCharacterStat(redTeam[i], statName) : '' }}
+            </td>
+            <td class="col-total red-total">{{ calculateTotal('red', statName) }}</td>
+            <td v-for="(_, i) in positionNames" :key="'bs-'+i" class="col-stat">
+              {{ blueTeam[i] ? getCharacterStat(blueTeam[i], statName) : '' }}
+            </td>
+            <td class="col-total blue-total">{{ calculateTotal('blue', statName) }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 未选择战役时的占位提示 -->
+    <div v-else-if="!selectedCampaignId" class="empty-hint">
+      请先选择一个战役，然后选择灵脉查看战斗表格
+    </div>
+    <div v-else-if="loading" class="empty-hint">加载角色列表中...</div>
+    <div v-else class="empty-hint">该战役暂无角色卡，请先上传角色卡</div>
+  </section>
+</template>
+
 <style scoped>
-.battle-sheet {
-  padding: 1rem;
-}
-.battle-selector {
+.page-head {
   margin-bottom: 1rem;
 }
-.battle-selector > div {
-  display: inline-block;
-  margin-right: 1rem;
-}
-.battle-selector label {
-  margin-right: 0.5rem;
-}
-.battle-selector select {
-  padding: 0.5rem;
-  font-size: 1rem;
-}
-.leyline-info {
+
+/* ---- 选择器栏 ---- */
+.selector-bar {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  padding: 0.75rem 1rem;
+  background: #f8f9ff;
+  border: 1px solid #e8ecf8;
+  border-radius: 0.75rem;
   margin-bottom: 1rem;
-  padding: 1rem;
-  background-color: #f0f8ff;
-  border: 1px solid #d0e1f5;
-  border-radius: 4px;
 }
-.leyline-info h2 {
-  margin-top: 0;
-  margin-bottom: 1rem;
+.selector-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.selector-item label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.selector-item select {
+  min-width: 180px;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.95rem;
+  background: #fff;
+}
+.positions-control {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.positions-control button {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  background: #fff;
   font-size: 1.2rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-.info-item {
-  margin-bottom: 0.5rem;
-}
-.info-item .label {
-  font-weight: bold;
-  margin-right: 0.5rem;
-}
-.info-item .value {
-  color: #333;
-}
-.battle-table-controls {
-  margin-bottom: 1rem;
-}
-.battle-table-controls button {
-  margin-right: 0.5rem;
-  padding: 0.5rem 1rem;
-  font-size: 1rem;
-}
-.battle-table-controls button:disabled {
-  opacity: 0.5;
+.positions-control button:disabled {
+  opacity: 0.4;
   cursor: not-allowed;
 }
-.battle-sheet h1 {
+.positions-num {
+  font-size: 1.1rem;
+  font-weight: 700;
+  min-width: 1.5rem;
+  text-align: center;
+}
+
+/* ---- 灵脉信息卡片 ---- */
+.leyline-card {
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  overflow: hidden;
   margin-bottom: 1rem;
+}
+.leyline-header {
+  padding: 0.5rem 1rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+.leyline-stats {
+  display: flex;
+  gap: 1.5rem;
+  padding: 0.6rem 1rem;
+  background: #f8f9ff;
+}
+.leyline-stat {
+  display: flex;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+}
+.leyline-stat-label {
+  color: #888;
+}
+.leyline-stat-value {
+  font-weight: 600;
+}
+
+/* ---- 战斗表格 ---- */
+.table-container {
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  overflow: hidden;
 }
 .battle-table {
   width: 100%;
   border-collapse: collapse;
+  font-size: 0.9rem;
 }
 .battle-table th,
 .battle-table td {
-  border: 1px solid #ddd;
-  padding: 8px;
+  padding: 0.5rem 0.4rem;
   text-align: center;
+  border-bottom: 1px solid #eee;
 }
-.battle-table th {
-  background-color: #f5f5f5;
+.col-label {
+  background: #f0f0f0;
+  font-weight: 700;
+  text-align: left !important;
+  padding-left: 0.75rem !important;
+  min-width: 80px;
 }
-.battle-table .red-team {
-  background-color: #ffebee;
+.col-pos {
+  background: #f8f8f8;
+  font-weight: 600;
+  font-size: 0.8rem;
 }
-.battle-table .blue-team {
-  background-color: #e3f2fd;
+.col-stat {
+  background: #fff;
 }
-.battle-table .row-label {
-  background-color: #e0e0e0;
-  font-weight: bold;
-  text-align: left;
+.battle-table tbody tr:hover td {
+  background: #f8f5ff;
 }
-.battle-table select {
+/* 团队表头颜色 */
+.team-header {
+  font-size: 1rem;
+  font-weight: 700;
+  padding: 0.6rem;
+}
+.red-header { background: #ffebee; color: #c62828; }
+.blue-header { background: #e3f2fd; color: #1565c0; }
+.red-total { background: #fff5f5; font-weight: 700; color: #c62828; }
+.blue-total { background: #f5f9ff; font-weight: 700; color: #1565c0; }
+
+.char-select {
   width: 100%;
-  padding: 4px;
-  font-size: 0.9rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  padding: 0.35rem 0.3rem;
+  font-size: 0.82rem;
+  background: #fff;
+}
+
+/* ---- 占位提示 ---- */
+.empty-hint {
+  padding: 2rem;
+  text-align: center;
+  color: #999;
+  border: 2px dashed #d0d0d0;
+  border-radius: 0.75rem;
+  font-size: 0.95rem;
 }
 </style>

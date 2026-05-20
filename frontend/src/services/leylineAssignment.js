@@ -1,5 +1,4 @@
-const API_BASE = 'http://localhost:8080/api'
-import { request } from './requestUtil'
+import { request, API_BASE } from './requestUtil.js'
 
 export async function listLeylineAssignments(campaignId) {
   const params = new URLSearchParams({ campaignId: String(campaignId) })

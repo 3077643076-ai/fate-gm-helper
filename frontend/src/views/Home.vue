@@ -17,11 +17,11 @@
       </RouterLink>
       <RouterLink class="nav-tile dashboard" to="/battle-control">
         <span>战役控制</span>
-        <small>管理战役与战斗流程</small>
+        <small>回合管理、灵脉配置、行动记录</small>
       </RouterLink>
       <RouterLink class="nav-tile skill" to="/skill-record">
         <span>技能记录</span>
-        <small>整理技能与版本</small>
+        <small>跳转到战斗控制页</small>
       </RouterLink>
     </div>
   </section>
@@ -30,26 +30,35 @@
 <style scoped>
 .nav-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 1rem;
+}
+@media (max-width: 520px) {
+  .nav-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .nav-tile {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
-  padding: 1rem 1.2rem;
-  border-radius: 0.6rem;
+  padding: 1.25rem 1.2rem;
+  border-radius: 0.75rem;
   color: #fff;
   font-weight: 600;
+  font-size: 1.1rem;
   box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
   transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
   opacity: 0.96;
+  min-height: 80px;
+  justify-content: center;
 }
 
 .nav-tile small {
   font-weight: 500;
-  opacity: 0.9;
+  font-size: 0.85rem;
+  opacity: 0.85;
 }
 
 .nav-tile:hover {
