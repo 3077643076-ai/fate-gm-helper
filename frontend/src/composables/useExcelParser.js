@@ -26,6 +26,16 @@ function readCellText(sheet, cellAddr) {
 }
 
 /**
+ * 从 sheet 中读取逗号分隔的文本，返回字符串数组
+ * 支持中英文逗号、顿号分隔，空单元格返回空数组
+ */
+function readCellList(sheet, cellAddr) {
+  const text = readCellText(sheet, cellAddr);
+  if (!text) return [];
+  return text.split(/[,，、]/).map(s => s.trim()).filter(Boolean);
+}
+
+/**
  * 拼接两个单元格的文本（如技能名称C列 + 等级F列 → "对魔力 B"）
  */
 function joinCellText(sheet, nameAddr, rankAddr) {
@@ -121,6 +131,10 @@ function parseServantSheet(sheet) {
     noblePhantasms,
     workshops: null,
     craftEssences: null,
+    // 规则书RC1.15核心字段（L列标签 → M列数据）
+    hiddenAttribute: readCellText(sheet, 'M8') || null,  // L8="隐属"
+    traits: readCellList(sheet, 'M6'),                    // L6="特性"
+    specialAttack: readCellText(sheet, 'M2') || null,     // L2="特攻列表"
   };
 }
 
@@ -185,6 +199,10 @@ function parseMasterSheet(sheet) {
     noblePhantasms: [],
     workshops,
     craftEssences,
+    // 规则书RC1.15核心字段（L列标签 → M列数据，御主模板无隐属）
+    hiddenAttribute: null,
+    traits: readCellList(sheet, 'M6'),                    // L6="特性"
+    specialAttack: readCellText(sheet, 'M2') || null,     // L2="特攻列表"
   };
 }
 

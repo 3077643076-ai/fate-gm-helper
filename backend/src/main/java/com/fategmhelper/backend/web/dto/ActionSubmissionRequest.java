@@ -20,6 +20,9 @@ public class ActionSubmissionRequest {
     @NotNull
     private ActionSubmission.ActionType actionType;
 
+    /** 结算类别（可选），未指定时服务端根据 content 自动检测 */
+    private ActionSubmission.PhaseType phaseType;
+
     @NotBlank
     private String content;
 

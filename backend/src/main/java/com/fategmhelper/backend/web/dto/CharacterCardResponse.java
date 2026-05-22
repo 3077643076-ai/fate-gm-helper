@@ -31,5 +31,10 @@ public class CharacterCardResponse {
     // 御主角色卡专用字段
     private List<SkillItemDto> workshops;
     private List<SkillItemDto> craftEssences;
+
+    // ===== 规则书RC1.15核心字段（战斗结算引擎需要） =====
+    private String hiddenAttribute;
+    private List<String> traits;
+    private String specialAttack;
 }
 

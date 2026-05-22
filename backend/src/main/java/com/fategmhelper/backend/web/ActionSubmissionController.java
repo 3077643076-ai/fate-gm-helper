@@ -23,7 +23,8 @@ public class ActionSubmissionController {
                 req.getServantClass(),
                 req.getActionType(),
                 req.getContent(),
-                req.getSubmittedBy()
+                req.getSubmittedBy(),
+                req.getPhaseType()
         );
         return ResponseEntity.ok(ActionSubmissionResponse.fromEntity(saved));
     }

@@ -14,6 +14,10 @@ public class LeylineResponse {
     Integer manaAmount;
     Integer battlefieldWidth;
     Integer populationFlow;
+    String size;           // 灵脉大小：EMPTY/SMALL/MEDIUM/LARGE
+    String sizeLabel;      // 灵脉大小中文：空/小/中/大
+    Long ownerCharacterId; // 灵脉所有者角色卡ID
+    String ownerCode;      // 灵脉所有者代号（便于GM识别）
     java.util.List<Long> assignedCharacterIds;
 
     public static LeylineResponse fromEntity(Leyline leyline) {
@@ -35,6 +39,10 @@ public class LeylineResponse {
                 leyline.getManaAmount(),
                 leyline.getBattlefieldWidth(),
                 leyline.getPopulationFlow(),
+                leyline.getSize() != null ? leyline.getSize().name() : null,
+                leyline.getSize() != null ? leyline.getSize().getLabel() : null,
+                leyline.getOwner() != null ? leyline.getOwner().getId() : null,
+                leyline.getOwner() != null ? leyline.getOwner().getCode() : null,
                 assigned
         );
     }

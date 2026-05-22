@@ -1,6 +1,7 @@
 package com.fategmhelper.backend.domain;
 
 import com.fategmhelper.backend.domain.converter.SkillListJsonConverter;
+import com.fategmhelper.backend.domain.converter.StringListJsonConverter;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -103,7 +104,22 @@ public class CharacterCard {
     @Convert(converter = SkillListJsonConverter.class)
     @Column(columnDefinition = "json", name = "craft_essences")
     private List<SkillItem> craftEssences;  // 礼装
-    
+
+    // ===== 规则书RC1.15核心字段（战斗结算引擎需要） =====
+
+    /** 隐属（天地人星兽，影响克制关系） */
+    @Column(name = "hidden_attribute")
+    private String hiddenAttribute;
+
+    /** 特性列表（JSON数组，如["神性","魔性","骑乘"]，影响特攻判定） */
+    @Convert(converter = StringListJsonConverter.class)
+    @Column(columnDefinition = "json", name = "traits")
+    private List<String> traits;
+
+    /** 特攻（针对特定特性的攻击加成描述） */
+    @Column(columnDefinition = "TEXT", name = "special_attack")
+    private String specialAttack;
+
     @Column(name = "retired", nullable = false)
     private boolean retired = false;
 }

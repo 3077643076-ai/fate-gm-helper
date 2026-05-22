@@ -77,6 +77,7 @@ const {
 const actionOrderMod = useActionOrder(campaignId, roundInfo)
 const {
   actionOrder, servantActions, masterActions,
+  servantActionPhases, masterActionPhases,
   resetActionOrderActions,
   loadActionSubmissions: _loadActionSubmissions,
 } = actionOrderMod
@@ -172,6 +173,7 @@ async function loadActionSubmissions() {
 // ========== SSE 长连接 ==========
 const sseMod = useSSEConnection(
   campaignId, servantActions, masterActions,
+  servantActionPhases, masterActionPhases,
   roundInfo, characterCards,
   loadActionSubmissions,
 )
@@ -184,6 +186,111 @@ const dataConsistency = useDataConsistency(campaignId, {
 })
 const { ensureDataConsistency } = dataConsistency
 
+// ========== 契约状态（内联在回合信息表中） ==========
+// 6种契约类型（规则书第四章）
+const CONTRACT_TYPES = [
+  { value: 'SAINT_GRAIL', label: '圣杯契约' },
+  { value: 'ALLIANCE', label: '同盟契约' },
+  { value: 'NON_AGGRESSION', label: '不战契约' },
+  { value: 'MANA', label: '魔力契约' },
+  { value: 'FORCED', label: '强制契约' },
+  { value: 'ENSLAVEMENT', label: '奴役契约' },
+]
+// 当前战役的全部ACTIVE契约（用于显示和双向查找）
+const activeContracts = ref([])
+// 每个槽位当前编辑中的：{ contractType, targetCardId }
+const contractEditState = ref(safeNullArray(roundInfo.value.classes.length))
+const contractSaving = ref(false)
+
+import { listContracts, createContract, breakContract } from '../services/contract.js'
+
+/** 加载契约 */
+async function loadContracts() {
+  if (!campaignId.value) { activeContracts.value = []; return }
+  try {
+    const list = await listContracts(campaignId.value) || []
+    activeContracts.value = list.filter(c => c.status === 'ACTIVE')
+  } catch (e) {
+    console.error('加载契约失败:', e)
+  }
+}
+
+/** 查找角色卡所在槽位索引 */
+function findSlotByCardId(cardId) {
+  if (!cardId) return -1
+  const card = characterCards.value.find(c => c.id === cardId)
+  if (!card) return -1
+  if (card.cardType === 'SERVANT') return findSlotIndexFromServantClass(card.className)
+  // MASTER: 通过代号匹配
+  const code = (card.code || '').toLowerCase()
+  if (!code) return -1
+  return masterCodes.value.findIndex(c => (c || '').toLowerCase() === code)
+}
+
+/** 获取某槽位涉及的全部契约（用于显示标签） */
+function getContractsForSlot(slotIndex) {
+  const servantCard = getCardBySlot(slotIndex, 'SERVANT')
+  const masterCard = getCardBySlot(slotIndex, 'MASTER')
+  const ids = new Set([servantCard?.id, masterCard?.id].filter(Boolean))
+  return activeContracts.value.filter(ct =>
+    ids.has(ct.initiatorCardId) || ids.has(ct.signatoryCardId)
+  )
+}
+
+/** 获取角色卡代号（简短显示） */
+function getCardCode(cardId) {
+  if (!cardId) return '?'
+  const card = characterCards.value.find(c => c.id === cardId)
+  return card?.code || '#' + cardId
+}
+
+/** 契约类型变更时，自动设置立约人默认值 */
+function onContractTypeSelected(slotIndex) {
+  const st = contractEditState.value[slotIndex]
+  if (!st) return
+  // 默认立约人：优先御主，没有御主则从者
+  if (getCardBySlot(slotIndex, 'MASTER')) {
+    st.initiatorType = 'MASTER'
+  } else if (getCardBySlot(slotIndex, 'SERVANT')) {
+    st.initiatorType = 'SERVANT'
+  }
+  st.targetCardId = null
+}
+
+/** GM设置契约时调用 */
+async function handleContractChange(slotIndex) {
+  const st = contractEditState.value[slotIndex]
+  if (!st?.contractType || !st?.targetCardId || !st?.initiatorType) return
+  if (!campaignId.value) return
+
+  // 立约人：按GM选择的类型（御主/从者）
+  const initiator = getCardBySlot(slotIndex, st.initiatorType)
+  if (!initiator?.id) return
+
+  contractSaving.value = true
+  try {
+    await createContract(campaignId.value, st.contractType, initiator.id, st.targetCardId, null)
+    contractEditState.value[slotIndex] = null
+    await loadContracts()
+  } catch (e) {
+    console.error('创建契约失败:', e)
+    await loadContracts()
+  } finally {
+    contractSaving.value = false
+  }
+}
+
+/** 破除契约 */
+async function handleBreakContractById(contractId) {
+  if (!confirm('确定破除该契约？')) return
+  try {
+    await breakContract(contractId)
+    await loadContracts()
+  } catch (e) {
+    console.error('破除契约失败:', e)
+  }
+}
+
 // ========== 包装函数（桥接 composable 与模板）==========
 
 // selectCampaign：composable 版只做基础切换 + router.push，这里补充数据加载
@@ -191,6 +298,7 @@ async function selectCampaign(campaign) {
   await _selectCampaign(campaign)
   await loadCharacterCards()
   await loadLeylines()
+  await loadContracts()
   try {
     const r = await getCurrentRound(campaignId.value)
     if (r && r.round && r.round.turnNumber != null) {
@@ -207,6 +315,7 @@ async function handleCreateCampaign() {
   if (campaignId.value) {
     await loadCharacterCards()
     await loadLeylines()
+    await loadContracts()
     await loadHistory()
     connectActionSSE()
   }
@@ -224,6 +333,7 @@ async function resummonCharacter(slotIndex, type) {
 async function onCampaignReady(cid) {
   await loadCharacterCards()
   await loadLeylines()
+  await loadContracts()
   try {
     const r = await getCurrentRound(cid)
     if (r && r.round && r.round.turnNumber != null) {
@@ -629,6 +739,67 @@ onBeforeUnmount(() => {
                   </div>
                 </td>
               </tr>
+              <tr class="master-row">
+                <td>契约</td>
+                <td v-for="(cls, index) in roundInfo.classes" :key="`contract-${index}`">
+                  <div class="contract-cell">
+                    <!-- 已生效的契约标签（双向显示：双方都能看到相同的主→从关系） -->
+                    <div class="contract-tags">
+                      <div
+                        v-for="ct in getContractsForSlot(index)"
+                        :key="ct.id"
+                        class="contract-tag-item"
+                      >
+                        <span class="contract-tag-type">{{ ct.contractTypeLabel }}</span>
+                        <span class="contract-tag-role contract-tag-master">主:{{ getCardCode(ct.initiatorCardId) }}</span>
+                        <span class="contract-tag-arrow">→</span>
+                        <span class="contract-tag-role contract-tag-servant">从:{{ getCardCode(ct.signatoryCardId) }}</span>
+                        <button class="contract-break-btn" title="破除契约" @click="handleBreakContractById(ct.id)">×</button>
+                      </div>
+                      <span v-if="getContractsForSlot(index).length === 0" class="contract-none">-</span>
+                    </div>
+                    <!-- 新建契约：类型 → 谁立约 → 对象 三个下拉框 -->
+                    <div class="contract-edit">
+                      <select
+                        v-model="(contractEditState[index] || (contractEditState[index] = {})).contractType"
+                        class="contract-type-select"
+                        @change="onContractTypeSelected(index)"
+                      >
+                        <option :value="null">+契约</option>
+                        <option v-for="ct in CONTRACT_TYPES" :key="ct.value" :value="ct.value">
+                          {{ ct.label }}
+                        </option>
+                      </select>
+                      <!-- 立约人选择：仅当御主和从者都存在时才需要选择 -->
+                      <select
+                        v-if="contractEditState[index]?.contractType && getCardBySlot(index, 'MASTER') && getCardBySlot(index, 'SERVANT')"
+                        v-model="contractEditState[index].initiatorType"
+                        class="contract-initiator-select"
+                      >
+                        <option value="MASTER">御主立约</option>
+                        <option value="SERVANT">从者立约</option>
+                      </select>
+                      <select
+                        v-if="contractEditState[index]?.contractType && contractEditState[index]?.initiatorType"
+                        v-model="contractEditState[index].targetCardId"
+                        class="contract-target-select"
+                        @change="handleContractChange(index)"
+                        :disabled="contractSaving"
+                      >
+                        <option :value="null">选择对方...</option>
+                        <option
+                          v-for="card in characterCards.filter(c => !c.retired && c.id !== (getCardBySlot(index, contractEditState[index].initiatorType))?.id)"
+                          :key="card.id"
+                          :value="card.id"
+                        >
+                          {{ card.code || '#' + card.id }}{{ card.className ? '（' + card.className + '）' : '' }}
+                        </option>
+                      </select>
+                      <span v-if="contractSaving" class="contract-saving">⏳</span>
+                    </div>
+                  </div>
+                </td>
+              </tr>
             </tbody>
           </table>
         </div>
@@ -659,7 +830,7 @@ onBeforeUnmount(() => {
           </table>
         </div>
       </div>
-    
+
     <!-- 灵脉管理完整面板（从技能记录迁移） -->
       <section class="card" v-if="campaignId">
         <div class="card-header collapsible-header" @click="collapsedSections.leylineMgmt = !collapsedSections.leylineMgmt">
@@ -690,6 +861,8 @@ onBeforeUnmount(() => {
               >
                 <div class="leyline-name-row">
                   <span class="leyline-name-text">{{ ley.name || '未命名灵脉' }}</span>
+                  <span v-if="ley.sizeLabel" class="leyline-size-badge" :class="'size-' + (ley.size || '').toLowerCase()">{{ ley.sizeLabel }}</span>
+                  <span v-if="ley.ownerCode" class="leyline-owner-badge" title="灵脉所有者">{{ ley.ownerCode }}</span>
                 </div>
                 <div class="leyline-meta">
                   魔力量：{{ ley.manaAmount }} ｜ 战场宽度：{{ ley.battlefieldWidth }} ｜ 人流量：{{ ley.populationFlow }}
@@ -739,6 +912,28 @@ onBeforeUnmount(() => {
                     class="detail-input"
                     min="0"
                   />
+                </div>
+              </div>
+              <!-- 灵脉大小 + 所有者 -->
+              <div class="detail-row two-cols">
+                <div class="detail-field">
+                  <label class="detail-label">灵脉大小</label>
+                  <select v-model="selectedLeyline.size" class="detail-input">
+                    <option :value="null">自动（按魔力量）</option>
+                    <option value="EMPTY">空灵脉</option>
+                    <option value="SMALL">小灵脉（5~10）</option>
+                    <option value="MEDIUM">中灵脉（15~30）</option>
+                    <option value="LARGE">大灵脉（35+）</option>
+                  </select>
+                </div>
+                <div class="detail-field">
+                  <label class="detail-label">灵脉所有者</label>
+                  <select v-model="selectedLeyline.ownerCharacterId" class="detail-input">
+                    <option :value="null">无</option>
+                    <option v-for="card in characterCards.filter(c => !c.retired)" :key="card.id" :value="card.id">
+                      {{ card.code || '#' + card.id }}{{ card.className ? '（' + card.className + '）' : '' }}
+                    </option>
+                  </select>
                 </div>
               </div>
               <div class="detail-row">
@@ -895,6 +1090,7 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </div>
+
       </main>
     </div>
   </section>
@@ -1759,6 +1955,101 @@ textarea.form-input {
   color: var(--color-text-secondary);
 }
 
+/* ---- 灵脉详情面板布局 ---- */
+.leyline-layout {
+  display: flex;
+  gap: 1.5rem;
+}
+.leyline-list-panel {
+  flex: 0 0 300px;
+}
+.leyline-detail-panel {
+  flex: 1;
+}
+.leyline-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.leyline-item-summary {
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+.leyline-item-summary:hover { background: #f8f9ff; }
+.leyline-item-summary.active { border-color: #667eea; background: #f0f2ff; }
+.leyline-name-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.leyline-name-text { font-weight: 600; }
+.leyline-meta { font-size: 0.8rem; color: var(--color-text-secondary); }
+
+/* 灵脉大小徽章 */
+.leyline-size-badge {
+  font-size: 0.7rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 3px;
+  font-weight: 500;
+}
+.leyline-size-badge.size-empty   { background: #f3f4f6; color: #6b7280; }
+.leyline-size-badge.size-small   { background: #dbeafe; color: #2563eb; }
+.leyline-size-badge.size-medium  { background: #fef3c7; color: #d97706; }
+.leyline-size-badge.size-large   { background: #fee2e2; color: #dc2626; }
+
+/* 灵脉所有者徽章 */
+.leyline-owner-badge {
+  font-size: 0.7rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 3px;
+  background: #ecfdf5;
+  color: #059669;
+  font-weight: 500;
+}
+
+/* 详情行布局 */
+.detail-row {
+  margin-bottom: 1rem;
+}
+.detail-row.three-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 0.75rem;
+}
+.detail-row.two-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+.detail-field { display: flex; flex-direction: column; }
+.detail-label { font-weight: 500; font-size: 0.85rem; margin-bottom: 0.25rem; color: var(--color-text-primary); }
+.detail-input {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.6rem;
+  font-size: 0.9rem;
+}
+.detail-input:focus { outline: none; border-color: #667eea; }
+.detail-textarea {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.6rem;
+  font-size: 0.9rem;
+  resize: vertical;
+  min-height: 60px;
+}
+.detail-textarea:focus { outline: none; border-color: #667eea; }
+.detail-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
 @media (max-width: 768px) {
   .control-actions {
     flex-direction: column;
@@ -1809,5 +2100,91 @@ textarea.form-input {
   font-size: 0.7rem;
   color: #888;
   flex-shrink: 0;
+}
+
+
+/* ---- 契约绑定行 ---- */
+.contract-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 130px;
+}
+.contract-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+  font-size: 0.7rem;
+}
+.contract-tag-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1rem;
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+  background: #f0f8ff;
+  border: 1px solid #a0c8f0;
+  white-space: nowrap;
+}
+.contract-tag-type {
+  font-weight: 600;
+  color: #0b66b2;
+}
+.contract-tag-arrow {
+  color: #888;
+}
+.contract-tag-role {
+  font-weight: 500;
+}
+.contract-tag-master {
+  color: #b45309; /* 琥珀色，代表"主"/立约人 */
+}
+.contract-tag-servant {
+  color: #6d28d9; /* 紫色，代表"从"/签约人 */
+}
+.contract-break-btn {
+  background: none;
+  border: none;
+  color: #ef4444;
+  cursor: pointer;
+  font-size: 0.8rem;
+  line-height: 1;
+  padding: 0;
+  margin: 0;
+}
+.contract-break-btn:hover {
+  color: #dc2626;
+}
+.contract-none {
+  color: #bbb;
+  font-style: italic;
+  font-size: 0.75rem;
+}
+.contract-edit {
+  display: flex;
+  gap: 0.2rem;
+  align-items: center;
+}
+.contract-type-select,
+.contract-initiator-select,
+.contract-target-select {
+  font-size: 0.7rem;
+  padding: 0.15rem 0.3rem;
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  background: white;
+  max-width: 100px;
+}
+.contract-type-select:focus,
+.contract-initiator-select:focus,
+.contract-target-select:focus {
+  border-color: #667eea;
+  outline: none;
+}
+.contract-initiator-select {
+  color: #b45309; /* 琥珀色，提示这是选择"主动方" */
+}
+.contract-saving {
+  font-size: 0.7rem;
 }
 </style>

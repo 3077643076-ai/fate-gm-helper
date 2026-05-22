@@ -43,5 +43,10 @@ public class CharacterCardRequest {
     private List<SkillItemDto> workshops;  // 工坊
     @Valid
     private List<SkillItemDto> craftEssences;  // 礼装
+
+    // ===== 规则书RC1.15核心字段（战斗结算引擎需要） =====
+    private String hiddenAttribute; // 隐属
+    private List<String> traits;    // 特性列表
+    private String specialAttack;   // 特攻
 }
 

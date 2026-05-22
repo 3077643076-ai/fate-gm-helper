@@ -49,10 +49,18 @@ public class RoundService {
                 .map(t -> t + 1)
                 .orElse(1);
 
+        // 自动计算昼夜：第1回合（降临日）无昼夜，之后奇数turn为昼、偶数turn为夜
+        // turnNumber=2 → 第1日昼 → DAY, turnNumber=3 → 第1日夜 → NIGHT, ...
+        Round.DayOrNight dayOrNight = null;
+        if (nextTurn >= 2) {
+            dayOrNight = ((nextTurn - 2) % 2 == 0) ? Round.DayOrNight.DAY : Round.DayOrNight.NIGHT;
+        }
+
         Round round = Round.builder()
                 .campaign(campaign)
                 .turnNumber(nextTurn)
                 .status(Status.OPEN)
+                .dayOrNight(dayOrNight)
                 .build();
 
         return roundRepository.save(round);

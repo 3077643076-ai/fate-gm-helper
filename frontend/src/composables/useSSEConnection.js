@@ -4,7 +4,7 @@ import { normalizeClassName } from '../utils/helpers.js'
 /**
  * SSE 长连接 — 监听行动提交的实时推送
  */
-export function useSSEConnection(campaignId, servantActions, masterActions, roundInfo, characterCards, loadActionSubmissionsFn) {
+export function useSSEConnection(campaignId, servantActions, masterActions, servantActionPhases, masterActionPhases, roundInfo, characterCards, loadActionSubmissionsFn) {
   // 用闭包变量持有 EventSource 实例，修复原先未声明变量的 bug
   let actionEventSource = null
 
@@ -44,8 +44,13 @@ export function useSSEConnection(campaignId, servantActions, masterActions, roun
           const obj = JSON.parse(e.data)
           const idx = findSlotIndexFromServantClass(obj.servantClass)
           if (idx === -1) return
-          if (obj.actionType === 'SERVANT_ACTION') servantActions.value[idx] = obj.content || ''
-          else masterActions.value[idx] = obj.content || ''
+          if (obj.actionType === 'SERVANT_ACTION') {
+            servantActions.value[idx] = obj.content || ''
+            if (servantActionPhases && servantActionPhases.value) servantActionPhases.value[idx] = obj.phaseType || null
+          } else {
+            masterActions.value[idx] = obj.content || ''
+            if (masterActionPhases && masterActionPhases.value) masterActionPhases.value[idx] = obj.phaseType || null
+          }
         } catch (err) { console.error('处理 submission SSE 失败', err) }
       })
       actionEventSource.addEventListener('connected', () => {

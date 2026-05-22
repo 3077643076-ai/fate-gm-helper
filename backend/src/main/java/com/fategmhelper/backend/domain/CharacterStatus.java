@@ -47,6 +47,10 @@ public class CharacterStatus {
     @Column(name = "current_command_seals")
     private Integer currentCommandSeals;
 
+    /** 本回合从契约御主获得的供魔值（供魔链路） */
+    @Column(name = "supply_mana")
+    private Integer supplyMana;
+
     // 异常状态（JSON格式存储）
     @Column(columnDefinition = "json")
     private String statusEffects;

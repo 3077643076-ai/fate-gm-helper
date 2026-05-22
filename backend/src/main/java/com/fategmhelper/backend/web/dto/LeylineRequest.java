@@ -37,6 +37,16 @@ public class LeylineRequest {
     private String effect;
 
     /**
+     * 灵脉大小（空/小/中/大），可选，未填时按魔力量自动推断
+     */
+    private String size;
+
+    /**
+     * 灵脉所有者角色卡ID，可选
+     */
+    private Long ownerCharacterId;
+
+    /**
      * 额外说明（风味描述等，可选）
      */
     private String description;

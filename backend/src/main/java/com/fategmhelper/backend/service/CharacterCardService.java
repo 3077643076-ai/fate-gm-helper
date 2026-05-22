@@ -47,6 +47,10 @@ public class CharacterCardService {
                 .noblePhantasms(toSkillItems(req.getNoblePhantasms()))
                 .workshops(toSkillItems(req.getWorkshops()))
                 .craftEssences(toSkillItems(req.getCraftEssences()))
+                // 规则书RC1.15核心字段
+                .hiddenAttribute(req.getHiddenAttribute())
+                .traits(req.getTraits())
+                .specialAttack(req.getSpecialAttack())
                 .build();
 
         CharacterCard saved = repository.save(entity);
@@ -165,6 +169,10 @@ public class CharacterCardService {
                 .workshops(toSkillDtos(entity.getWorkshops()))
                 .craftEssences(toSkillDtos(entity.getCraftEssences()))
                 .retired(entity.isRetired())
+                // 规则书RC1.15核心字段
+                .hiddenAttribute(entity.getHiddenAttribute())
+                .traits(entity.getTraits())
+                .specialAttack(entity.getSpecialAttack())
                 .build();
     }
 }

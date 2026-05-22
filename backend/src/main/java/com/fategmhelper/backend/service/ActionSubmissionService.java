@@ -26,6 +26,16 @@ public class ActionSubmissionService {
                                          ActionSubmission.ActionType actionType,
                                          String content,
                                          String submittedBy) {
+        return submitAction(campaignId, servantClass, actionType, content, submittedBy, null);
+    }
+
+    @Transactional
+    public ActionSubmission submitAction(Long campaignId,
+                                         String servantClass,
+                                         ActionSubmission.ActionType actionType,
+                                         String content,
+                                         String submittedBy,
+                                         ActionSubmission.PhaseType phaseType) {
         Campaign campaign = campaignRepository.findById(campaignId)
                 .orElseThrow(() -> new IllegalArgumentException("未找到对应战役：" + campaignId));
 
@@ -35,11 +45,17 @@ public class ActionSubmissionService {
         // 先把该回合下相同阶职 + 行动类型的旧记录标记为非 current
         actionSubmissionRepository.clearCurrentForSlot(round.getId(), servantClass, actionType);
 
+        // 如果玩家未指定结算类别，根据内容文本自动检测
+        if (phaseType == null) {
+            phaseType = ActionSubmission.PhaseType.detectFromText(content);
+        }
+
         ActionSubmission submission = ActionSubmission.builder()
                 .round(round)
                 .campaign(campaign)
                 .servantClass(servantClass)
                 .actionType(actionType)
+                .phaseType(phaseType)
                 .content(content)
                 .submittedBy(submittedBy)
                 .current(true)

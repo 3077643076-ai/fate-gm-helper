@@ -31,6 +31,12 @@ public class Round {
         CLOSED
     }
 
+    /** 昼夜标识（第1回合为降临日，dayOrNight=null；之后按昼/夜交替） */
+    public enum DayOrNight {
+        DAY,   // 昼
+        NIGHT  // 夜
+    }
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -45,6 +51,11 @@ public class Round {
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     private Status status;
+
+    /** 昼夜标识：第1回合（降临日）为null，之后按turnNumber自动交替 */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "day_or_night")
+    private DayOrNight dayOrNight;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)

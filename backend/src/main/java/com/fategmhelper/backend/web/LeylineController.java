@@ -33,6 +33,10 @@ public class LeylineController {
             m.put("manaAmount", ley.getManaAmount());
             m.put("battlefieldWidth", ley.getBattlefieldWidth());
             m.put("populationFlow", ley.getPopulationFlow());
+            m.put("size", ley.getSize() != null ? ley.getSize().name() : null);
+            m.put("sizeLabel", ley.getSize() != null ? ley.getSize().getLabel() : null);
+            m.put("ownerCharacterId", ley.getOwner() != null ? ley.getOwner().getId() : null);
+            m.put("ownerCode", ley.getOwner() != null ? ley.getOwner().getCode() : null);
             java.util.List<Long> assigned = java.util.Collections.emptyList();
             try {
                 if (ley.getAssignedCharacterIdsJson() != null && !ley.getAssignedCharacterIdsJson().trim().isEmpty()) {

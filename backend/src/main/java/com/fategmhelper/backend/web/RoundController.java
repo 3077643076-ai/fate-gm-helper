@@ -34,6 +34,7 @@ public class RoundController {
         roundMap.put("id", closed.getId());
         roundMap.put("turnNumber", closed.getTurnNumber());
         roundMap.put("status", closed.getStatus() != null ? closed.getStatus().name() : null);
+        roundMap.put("dayOrNight", closed.getDayOrNight() != null ? closed.getDayOrNight().name() : null);
         roundMap.put("closedAt", closed.getClosedAt());
         roundMap.put("createdAt", closed.getCreatedAt());
         out.put("round", roundMap);
@@ -71,6 +72,7 @@ public class RoundController {
         roundMap.put("id", r.getId());
         roundMap.put("turnNumber", r.getTurnNumber());
         roundMap.put("status", r.getStatus() != null ? r.getStatus().name() : null);
+        roundMap.put("dayOrNight", r.getDayOrNight() != null ? r.getDayOrNight().name() : null);
         roundMap.put("createdAt", r.getCreatedAt());
         roundMap.put("closedAt", r.getClosedAt());
         return ResponseEntity.ok(java.util.Map.of("round", roundMap));
@@ -83,6 +85,7 @@ public class RoundController {
         roundMap.put("id", next.getId());
         roundMap.put("turnNumber", next.getTurnNumber());
         roundMap.put("status", next.getStatus() != null ? next.getStatus().name() : null);
+        roundMap.put("dayOrNight", next.getDayOrNight() != null ? next.getDayOrNight().name() : null);
         roundMap.put("createdAt", next.getCreatedAt());
         roundMap.put("closedAt", next.getClosedAt());
         return ResponseEntity.ok(java.util.Map.of("round", roundMap));

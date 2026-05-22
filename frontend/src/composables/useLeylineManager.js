@@ -17,6 +17,10 @@ export function useLeylineManager(campaignId, characterCards, roundInfo, servant
         manaAmount: ley.manaAmount ?? 0,
         battlefieldWidth: ley.battlefieldWidth ?? 0,
         populationFlow: ley.populationFlow ?? 0,
+        size: ley.size || null,
+        sizeLabel: ley.sizeLabel || '',
+        ownerCharacterId: ley.ownerCharacterId || null,
+        ownerCode: ley.ownerCode || '',
         assignedCharacterIds: ley.assignedCharacterIds || []
       }))
       servantLeylineIds.value = safeNullArray(roundInfo.value.classes.length)
@@ -93,10 +97,12 @@ export function useLeylineManager(campaignId, characterCards, roundInfo, servant
   async function saveLeyline(ley) {
     if (!campaignId.value) { alert('请先选择战役'); return }
     try {
+      const size = ley.size || null
+      const ownerId = ley.ownerCharacterId || null
       if (ley.id) {
-        await updateLeyline(ley.id, campaignId.value, ley.name || '', ley.manaAmount || 0, ley.battlefieldWidth || 0, ley.populationFlow || 0, ley.effect || '', ley.description || '')
+        await updateLeyline(ley.id, campaignId.value, ley.name || '', ley.manaAmount || 0, ley.battlefieldWidth || 0, ley.populationFlow || 0, ley.effect || '', ley.description || '', size, ownerId)
       } else {
-        const res = await createLeyline(campaignId.value, ley.name || '新灵脉', ley.manaAmount || 0, ley.battlefieldWidth || 0, ley.populationFlow || 0, ley.effect || '', ley.description || '')
+        const res = await createLeyline(campaignId.value, ley.name || '新灵脉', ley.manaAmount || 0, ley.battlefieldWidth || 0, ley.populationFlow || 0, ley.effect || '', ley.description || '', size, ownerId)
         ley.id = res && res.id ? res.id : ley.id
       }
       await loadLeylines()

@@ -13,6 +13,7 @@ public class ActionSubmissionResponse {
     Long roundId;
     String servantClass;
     ActionSubmission.ActionType actionType;
+    ActionSubmission.PhaseType phaseType;
     String content;
     String submittedBy;
     boolean current;
@@ -26,6 +27,7 @@ public class ActionSubmissionResponse {
                 entity.getRound() != null ? entity.getRound().getId() : null,
                 entity.getServantClass(),
                 entity.getActionType(),
+                entity.getPhaseType(),
                 entity.getContent(),
                 entity.getSubmittedBy(),
                 entity.isCurrent(),

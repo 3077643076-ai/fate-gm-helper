@@ -138,6 +138,10 @@ export function useCharacterCardParser() {
       noblePhantasms,
       workshops: null,
       craftEssences: null,
+      // 规则书RC1.15核心字段
+      hiddenAttribute: null,
+      traits: null,
+      specialAttack: null,
     };
   }
 
@@ -191,6 +195,10 @@ export function useCharacterCardParser() {
       noblePhantasms: [],
       workshops,
       craftEssences,
+      // 规则书RC1.15核心字段
+      hiddenAttribute: null,
+      traits: null,
+      specialAttack: null,
     };
   }
 

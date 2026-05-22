@@ -5,17 +5,17 @@ export async function listLeylines(campaignId) {
   return request(`${API_BASE}/leylines?${params.toString()}`);
 }
 
-export async function createLeyline(campaignId, name, manaAmount, battlefieldWidth, populationFlow, effect = '', description = '') {
+export async function createLeyline(campaignId, name, manaAmount, battlefieldWidth, populationFlow, effect = '', description = '', size = null, ownerCharacterId = null) {
   return request(`${API_BASE}/leylines`, {
     method: 'POST',
-    body: JSON.stringify({ campaignId, name, manaAmount, battlefieldWidth, populationFlow, effect, description }),
+    body: JSON.stringify({ campaignId, name, manaAmount, battlefieldWidth, populationFlow, effect, description, size, ownerCharacterId }),
   });
 }
 
-export async function updateLeyline(id, campaignId, name, manaAmount, battlefieldWidth, populationFlow, effect = '', description = '') {
+export async function updateLeyline(id, campaignId, name, manaAmount, battlefieldWidth, populationFlow, effect = '', description = '', size = null, ownerCharacterId = null) {
   return request(`${API_BASE}/leylines/${id}`, {
     method: 'PUT',
-    body: JSON.stringify({ campaignId, name, manaAmount, battlefieldWidth, populationFlow, effect, description }),
+    body: JSON.stringify({ campaignId, name, manaAmount, battlefieldWidth, populationFlow, effect, description, size, ownerCharacterId }),
   });
 }
 
@@ -43,5 +43,3 @@ export async function deleteLeyline(id) {
     method: 'DELETE',
   });
 }
-
-
