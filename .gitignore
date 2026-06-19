@@ -46,3 +46,28 @@ my-koishi-bot/data/
 
 # === 个人笔记 ===
 圣杯笔记本/
+
+# === OCR临时文件 ===
+_pdf_images/
+_pdf_ocr_output/
+_ocr_*.py
+
+# === 截图 ===
+截图/
+
+# === Claude本地配置（符号链接指/personal）===
+.claude/settings.local.json
+.claude/skills/caveman/
+.claude/skills/diagnose/
+.claude/skills/grill-me/
+.claude/skills/grill-with-docs/
+.claude/skills/handoff/
+.claude/skills/improve-codebase-architecture/
+.claude/skills/prototype/
+.claude/skills/setup-matt-pocock-skills/
+.claude/skills/tdd/
+.claude/skills/to-issues/
+.claude/skills/to-prd/
+.claude/skills/triage/
+.claude/skills/write-a-skill/
+.claude/skills/zoom-out/
