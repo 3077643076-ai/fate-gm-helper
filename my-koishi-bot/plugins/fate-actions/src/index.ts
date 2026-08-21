@@ -7,16 +7,8 @@ export interface Config {
 }
 
 export const Config: Schema<Config> = Schema.object({
-  apiBase: Schema.string().default('http://localhost:8080/api').description('后端 API 基地址'),
+  apiBase: Schema.string().default('http://localhost:8100/api').description('后端 API 基地址'),
 })
-
-// 简单的内存绑定：{ 平台:频道 } -> { campaignId }
-// 如果需要持久化，可以改成使用 Koishi 数据库表来保存
-const bindings = new Map<string, { campaignId: number }>()
-
-function bindingKey(platform: string, guildId: string) {
-  return `${platform}:${guildId}`
-}
 
 function normalizeServantClass(cls: string): { raw: string; normalized: string } {
   const raw = (cls || '').trim()
@@ -43,10 +35,13 @@ export function apply(ctx: Context, config: Config) {
         return '请提供战役 ID，例如：绑定战役 3'
       }
       try {
-        const campaign = await ctx.http.get(`${config.apiBase}/campaigns/${campaignId}`)
-        const key = bindingKey(session.platform, session.guildId)
-        bindings.set(key, { campaignId })
-        const name = campaign?.name || '（未命名战役）'
+        const binding = await ctx.http.post(`${config.apiBase}/qq-bindings`, {
+          platform: session.platform,
+          guildId: session.guildId,
+          campaignId,
+          groupName: session.guild?.name || null,
+        })
+        const name = binding?.campaignName || '（未命名战役）'
         return `已将本群绑定到战役 ID=${campaignId}，${name}`
       } catch (e: any) {
         const msg = String(e?.response?.data || e?.message || e)
@@ -59,10 +54,38 @@ export function apply(ctx: Context, config: Config) {
 
   async function getBoundCampaignId(session: any): Promise<number | null> {
     if (!session?.guildId) return null
-    const key = bindingKey(session.platform, session.guildId)
-    const bound = bindings.get(key)
-    return bound?.campaignId ?? null
+    try {
+      const bound = await ctx.http.get(`${config.apiBase}/qq-bindings`, {
+        params: {
+          platform: session.platform,
+          guildId: session.guildId,
+        },
+      })
+      return bound?.campaignId ?? null
+    } catch {
+      return null
+    }
   }
+
+  ctx.command('当前绑定', '查询本群绑定的战役')
+    .action(async ({ session }) => {
+      if (!session?.guildId) {
+        return '本指令需要在群聊中使用。'
+      }
+      try {
+        const bound = await ctx.http.get(`${config.apiBase}/qq-bindings`, {
+          params: {
+            platform: session.platform,
+            guildId: session.guildId,
+          },
+        })
+        if (!bound?.campaignId) return '本群尚未绑定战役。'
+        return `本群当前绑定：战役 ID=${bound.campaignId}，${bound.campaignName || '（未命名战役）'}`
+      } catch (e: any) {
+        const msg = String(e?.response?.data || e?.message || e)
+        return `查询绑定失败：${msg}`
+      }
+    })
 
   function checkGroupNameForClass(session: any, servantClass: string): string | null {
     const groupName: string = session?.guild?.name || ''
@@ -145,5 +168,3 @@ export function apply(ctx: Context, config: Config) {
       })
     })
 }
-
-

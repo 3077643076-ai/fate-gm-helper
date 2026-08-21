@@ -1,0 +1,13 @@
+{
+  "name": "fate-gm-helper-local",
+  "private": true,
+  "scripts": {
+    "install:all": "npm --prefix frontend install && npm --prefix backend-node install",
+    "build": "npm --prefix frontend run build",
+    "start": "npm --prefix backend-node start",
+    "backup": "npm --prefix backend-node run backup",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:backend": "npm --prefix backend-node run dev",
+    "test": "npm --prefix frontend run test && npm --prefix backend-node run test && node test/validate-test-cards.js"
+  }
+}

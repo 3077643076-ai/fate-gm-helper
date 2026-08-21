@@ -2,11 +2,13 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useCharacterCardParser } from '../composables/useCharacterCardParser'
+import { useRPChecker } from '../composables/useRPChecker'
 import { createCharacterCard, listCharacterCards, getCharacterCard, deleteCharacterCard } from '../services/characterCard'
 import { retireCharacterCard, unretireCharacterCard } from '../services/characterCard'
 import { listCampaigns, getSelectedCampaign } from '../services/campaign'
 
 const route = useRoute()
+const { calculateRP } = useRPChecker()
 
 const inputText = ref('')
 const parsed = ref(null)
@@ -169,6 +171,13 @@ async function unretire(id) {
 }
 
 const showingCard = computed(() => selectedCard.value || parsed.value)
+
+// RP 统计（仅从者卡）
+const rpResult = computed(() => {
+  const card = showingCard.value
+  if (!card || card.cardType !== 'SERVANT') return null
+  return calculateRP(card)
+})
 </script>
 
 <template>
@@ -345,6 +354,74 @@ const showingCard = computed(() => selectedCard.value || parsed.value)
     </div>
 
     <p v-if="message" class="message">{{ message }}</p>
+
+    <!-- RP 资源点统计面板 -->
+    <div v-if="rpResult" class="rp-panel">
+      <div class="rp-header">
+        <h2>资源点（RP）统计</h2>
+        <div class="rp-total" :class="{ 'rp-over': rpResult.isOver }">
+          <span class="rp-number">{{ rpResult.totalRP }}</span>
+          <span class="rp-divider">/</span>
+          <span class="rp-baseline">{{ rpResult.baseline }}</span>
+          <span v-if="rpResult.isOver" class="rp-over-badge">超出 {{ rpResult.over }} RP</span>
+          <span v-else class="rp-ok-badge">剩余 {{ Math.abs(rpResult.over) }} RP</span>
+        </div>
+      </div>
+
+      <div class="rp-note" v-if="rpResult.isOver">
+        此角色卡超出标准24RP。部分杯战允许超出，请GM根据剧本设定判断是否接受。
+      </div>
+
+      <table class="rp-table">
+        <thead>
+          <tr>
+            <th>类别</th>
+            <th>详情</th>
+            <th class="rp-col">RP</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="(item, idx) in rpResult.breakdown" :key="idx">
+            <td class="rp-cat">{{ item.category }}</td>
+            <td class="rp-detail">
+              <!-- 属性行 -->
+              <template v-if="item.category === '属性分配'">
+                <div class="rp-attr-grid">
+                  <span v-for="d in item.detail" :key="d.label"
+                    :class="{ 'rp-attr-over': d.overLimit }"
+                    :title="d.overLimit ? `${d.label}超出分配上限${d.maxAlloc}` : ''">
+                    {{ d.label }}{{ d.base }}<span class="rp-attr-alloc">(职介{{ d.classBase }}+分配{{ d.allocated }})</span>
+                  </span>
+                </div>
+                <div class="rp-item-note">{{ item.note }}</div>
+              </template>
+              <!-- 技能/宝具行 -->
+              <template v-else>
+                <div v-for="d in item.detail" :key="d.name" class="rp-skill-line">
+                  <span :class="{ 'rp-class-skill': d.isClass }">{{ d.name }}</span>
+                  <span class="rp-rank">[{{ d.rank }}]</span>
+                  <span v-if="d.plusCost" class="rp-plus">+加符</span>
+                  <span class="rp-cost">{{ d.cost }}RP</span>
+                </div>
+                <div v-if="item.category === '额外宝具栏'" class="rp-item-note">{{ item.detail }}</div>
+              </template>
+            </td>
+            <td class="rp-col rp-val">{{ item.rp }}</td>
+          </tr>
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="2" class="rp-total-label">合计</td>
+            <td class="rp-col rp-total-val" :class="{ 'rp-over': rpResult.isOver }">{{ rpResult.totalRP }} RP</td>
+          </tr>
+        </tfoot>
+      </table>
+
+      <!-- 宝具属性校验 -->
+      <div v-if="!rpResult.npMatchExpected" class="rp-warning">
+        宝具属性({{ rpResult.npBase }})与最高宝具等级{{ rpResult.highestNpRank }}应有值({{ rpResult.expectedNpStat }})不匹配，请检查。
+      </div>
+    </div>
 
     <div v-if="showingCard" class="preview-grid">
       <div class="card-section">
@@ -654,6 +731,186 @@ const showingCard = computed(() => selectedCard.value || parsed.value)
   margin: 0;
   padding-left: 1.1rem;
   color: var(--color-text-secondary);
+}
+
+/* ===== RP 面板样式 ===== */
+.rp-panel {
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+  background: #fefefe;
+}
+
+.rp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.rp-header h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.rp-total {
+  display: flex;
+  align-items: baseline;
+  gap: 0.25rem;
+  font-size: 1.1rem;
+  padding: 0.3rem 0.8rem;
+  border-radius: 0.5rem;
+  background: #e6f7e6;
+}
+
+.rp-total.rp-over {
+  background: #fff0f0;
+}
+
+.rp-number {
+  font-weight: 800;
+  font-size: 1.4rem;
+}
+
+.rp-baseline {
+  color: #888;
+}
+
+.rp-over-badge {
+  margin-left: 0.5rem;
+  font-size: 0.85rem;
+  color: #d32f2f;
+  font-weight: 700;
+}
+
+.rp-ok-badge {
+  margin-left: 0.5rem;
+  font-size: 0.85rem;
+  color: #2e7d32;
+  font-weight: 700;
+}
+
+.rp-note {
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: #fff8e1;
+  border-left: 3px solid #ffc107;
+  font-size: 0.9rem;
+  color: #795548;
+  border-radius: 0.3rem;
+}
+
+.rp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.rp-table th {
+  text-align: left;
+  padding: 0.5rem 0.6rem;
+  border-bottom: 2px solid #ddd;
+  background: #f5f5f5;
+  font-weight: 700;
+}
+
+.rp-table td {
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid #eee;
+  vertical-align: top;
+}
+
+.rp-col {
+  text-align: right;
+  white-space: nowrap;
+  width: 60px;
+}
+
+.rp-cat {
+  font-weight: 700;
+  white-space: nowrap;
+  width: 100px;
+}
+
+.rp-attr-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.8rem;
+}
+
+.rp-attr-grid span {
+  font-size: 0.88rem;
+}
+
+.rp-attr-alloc {
+  color: #999;
+  font-size: 0.8rem;
+}
+
+.rp-attr-over {
+  color: #d32f2f;
+  font-weight: 700;
+  text-decoration: underline wavy #d32f2f;
+}
+
+.rp-skill-line {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0;
+}
+
+.rp-class-skill {
+  color: #5f3dc4;
+}
+
+.rp-rank {
+  color: #888;
+  font-size: 0.8rem;
+}
+
+.rp-plus {
+  color: #e67e22;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.rp-cost {
+  margin-left: auto;
+  font-weight: 600;
+  color: #555;
+}
+
+.rp-item-note {
+  margin-top: 0.3rem;
+  font-size: 0.82rem;
+  color: #aaa;
+}
+
+.rp-total-label {
+  font-weight: 700;
+  text-align: right;
+}
+
+.rp-total-val {
+  font-weight: 800;
+  font-size: 1.1rem;
+}
+
+.rp-total-val.rp-over {
+  color: #d32f2f;
+}
+
+.rp-warning {
+  margin-top: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: #fff0f0;
+  border-left: 3px solid #d32f2f;
+  font-size: 0.9rem;
+  color: #b71c1c;
+  border-radius: 0.3rem;
 }
 </style>
 

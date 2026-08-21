@@ -1,17 +1,18 @@
-# 一键启动前后端（在项目根运行本脚本）
+# 一键启动开发模式：Node 后端 + Vite 前端
 
-# 后端：Spring Boot
-$javaHome = "$env:USERPROFILE\Java\jdk-17"
+$root = Split-Path -Parent $MyInvocation.MyCommand.Path
+
 Start-Process powershell -ArgumentList @(
-  '-NoExit'
-  '-Command'
-  "`$env:JAVA_HOME = '$javaHome'; cd 'X:\dev\dev\fate-gm-helper\backend'; .\mvnw.cmd spring-boot:run"
+  '-NoExit',
+  '-Command',
+  "cd '$root\backend-node'; npm run dev"
 )
 
-# 前端：Vite + Vue
 Start-Process powershell -ArgumentList @(
-  '-NoExit'
-  '-Command'
-  'cd "X:\dev\dev\fate-gm-helper\frontend"; npm run dev'
+  '-NoExit',
+  '-Command',
+  "cd '$root\frontend'; npm run dev"
 )
 
+Write-Host 'Backend:  http://localhost:8100'
+Write-Host 'Frontend: http://localhost:3100'

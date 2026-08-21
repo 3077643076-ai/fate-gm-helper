@@ -1,0 +1,41 @@
+# 本地运行数据和依赖
+node_modules/
+dist/
+/lib/
+/data/
+/cache/
+/temp/
+*.log
+
+# 本项目生成的 SQLite 数据库和备份，不要提交到 GitHub
+backend-node/data/*.db
+backend-node/data/*.db-*
+backend-node/backups/
+
+# Java / Maven 构建产物
+backend/target/
+backend/src/main/resources/application.yml
+
+# 本地编辑器、AI 工具和调试工作区
+.claude/*
+!.claude/
+!.claude/handoffs/
+.claude/handoffs/*
+!.claude/handoffs/2026-08-21-周末测试交接.md
+.playwright-mcp/
+.superpowers/
+.vscode/settings.json
+config.json
+settings.json
+
+# Koishi 本地运行配置，真实 token 只留在本机
+my-koishi-bot/.env
+my-koishi-bot/.env.local
+my-koishi-bot/koishi.yml
+
+# 临时资料和截图
+1.15/
+battle-sheet-alignment.png
+table1.png
+battle_rule_raw.txt
+rule.txt

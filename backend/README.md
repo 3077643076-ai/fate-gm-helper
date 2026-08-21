@@ -1,47 +1,42 @@
-# Fate GM Helper Backend (Spring Boot)
+# Fate GM Helper Backend (Spring Boot Legacy)
 
-## 快速启动
-1. 环境：JDK 17+、Maven、MySQL (5.7+/8.0)。
-2. 创建数据库：
-   ```sql
-   CREATE DATABASE dev DEFAULT CHARACTER SET utf8mb4;
-   ```
-3. 配置数据库账号：默认 `application.yml` 使用 `root` / `Aa307764.` / `dev`，若不同请修改：
-   `backend/src/main/resources/application.yml`
-4. 启动：
-   ```bash
-   cd backend
-   mvn spring-boot:run
-   ```
-5. 接口示例：
-   - POST `http://localhost:8080/api/character-cards`  
-   - GET  `http://localhost:8080/api/character-cards/{id}`  
-   - GET  `http://localhost:8080/api/character-cards?page=0&size=20`
+这个目录保留 Spring Boot + JPA + MySQL 旧版后端代码，主要用于参考和迁移对照。
 
-## 接口请求体示例
-```json
-{
-  "code": "Rider",
-  "className": "Rider",
-  "rawText": ".st ... 原始文本 ...",
-  "totalStats": { "level": 70, "strength": 55, "endurance": 55, "agility": 75, "mana": 95, "luck": 115, "noblePhantasm": 65 },
-  "baseStats":  { "level": 70, "strength": 50, "endurance": 50, "agility": 70, "mana": 90, "luck": 110, "noblePhantasm": 0 },
-  "correctionStats": { "level": 0, "strength": 5, "endurance": 5, "agility": 5, "mana": 5, "luck": 5, "noblePhantasm": 5 },
-  "classSkills": [
-    { "name": "对魔力B", "rank": "B", "desc": "..." },
-    { "name": "骑乘A", "rank": "A", "desc": "..." }
-  ],
-  "personalSkills": [
-    { "name": "领袖气质A", "rank": "A", "desc": "..." }
-  ],
-  "noblePhantasms": [
-    { "name": "光辉复合大神殿", "rank": "EX", "desc": "..." }
-  ]
-}
+当前项目主线已经切换到：
+
+```text
+backend-node = Node.js + Express + SQLite（better-sqlite3）
 ```
 
-## 说明
-- 列表字段（职介技能/保有技能/宝具）存为 JSON 列，后续可按需拆表。
-- `spring.jpa.hibernate.ddl-auto=update` 已开启，启动时自动建表。
-- 已开放 CORS：`http://localhost:5173`（前端 Vite 默认端口）。
+## 当前建议
+- 新功能优先写 `backend-node`。
+- SQLite 默认数据库文件为 `backend-node/data/gm_helper.db`。
+- 可用 `FATE_GM_DB_PATH` 指定数据库位置，方便和 Koishi 项目相邻部署。
+- 不建议继续为当前轻量部署新增 Spring Boot / MySQL 功能。
 
+## 如果仍要运行旧版
+需要 JDK 17+、MySQL 8.0。
+
+```bash
+cd backend
+./mvnw.cmd spring-boot:run
+```
+
+配置文件：
+
+```text
+backend/src/main/resources/application.yml
+```
+
+如果本机 `JAVA_HOME` 仍指向 Java 8 或无效路径，Spring Boot 3 项目无法编译运行。
+
+## 旧版接口模块
+- `/api/campaigns`：战役管理、当前选择战役。
+- `/api/character-cards`：角色卡保存、检索、删除、退场/重新登场。
+- `/api/leylines`：灵脉管理。
+- `/api/leyline-assignments`：灵脉分配。
+- `/api/rounds`：当前回合、下一回合、关闭回合、历史快照。
+- `/api/action-submissions`：行动提交和当前回合行动列表。
+- `/api/action-submissions/stream`：SSE 行动实时推送。
+- `/api/character-status`：角色状态保存和查询。
+- `/api/battle-sheets`：战斗表创建、读取、保存、删除。

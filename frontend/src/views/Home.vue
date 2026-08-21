@@ -19,9 +19,9 @@
         <span>战役控制</span>
         <small>管理战役与战斗流程</small>
       </RouterLink>
-      <RouterLink class="nav-tile skill" to="/skill-record">
-        <span>技能记录</span>
-        <small>整理技能与版本</small>
+      <RouterLink class="nav-tile skill-template" to="/skill-templates">
+        <span>技能模板库</span>
+        <small>结构化技能效果</small>
       </RouterLink>
     </div>
   </section>
@@ -62,7 +62,7 @@
 .nav-tile.sheet { background: linear-gradient(135deg, #0984e3, #74b9ff); }
 .nav-tile.card { background: linear-gradient(135deg, #00b894, #55efc4); }
 .nav-tile.dashboard { background: linear-gradient(135deg, #6c5ce7, #a29bfe); }
-.nav-tile.skill { background: linear-gradient(135deg, #fdcb6e, #f6b93b); color: #2d3436; }
-.nav-tile.skill small { color: #2d3436; }
+.nav-tile.skill-template { background: linear-gradient(135deg, #2d1b0f, #b88737); color: #ffecc0; }
+.nav-tile.skill-template small { color: #ffecc0; }
 </style>
 

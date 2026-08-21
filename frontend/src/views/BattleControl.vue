@@ -384,6 +384,11 @@ function goToCharacterCardUpload(campaignId) {
   router.push(`/character-card-upload/${campaignId}`)
 }
 
+// 跳转到战斗表页面
+function goToBattleSheet(campaignId) {
+  router.push(`/battle-sheet/${campaignId}`)
+}
+
 // 回合名称映射（降临日 -> 第 N 日昼/夜）
 const currentTurnLabel = computed(() => {
   const turn = currentTurn.value
@@ -1606,11 +1611,17 @@ onBeforeUnmount(() => {
                       >
                         {{ campaignId === campaign.id ? '当前战役' : '选择' }}
                       </button>
-                      <button 
+                      <button
                         class="btn btn-sm btn-secondary"
                         @click="goToCharacterCardUpload(campaign.id)"
                       >
                         人物卡
+                      </button>
+                      <button
+                        class="btn btn-sm btn-secondary"
+                        @click="goToBattleSheet(campaign.id)"
+                      >
+                        战斗表
                       </button>
                       <button 
                         class="btn btn-sm btn-danger" 

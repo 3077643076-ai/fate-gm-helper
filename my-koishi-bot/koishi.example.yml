@@ -1,0 +1,19 @@
+plugins:
+  group:server:
+    server:local:
+      port: 5140
+      maxPort: 5149
+  group:basic:
+    commands:default: {}
+    help:default: {}
+    http:default: {}
+    fate-actions:fategm:
+      apiBase: http://localhost:8100/api
+  group:storage:
+    database-sqlite:default:
+      path: data/koishi.db
+  group:adapter:
+    # 真实 QQ / OneBot 账号配置请写在本机 my-koishi-bot/koishi.yml，不要提交到 GitHub。
+    ~adapter-onebot:local:
+      selfId: "CHANGE_ME"
+      token: "CHANGE_ME"

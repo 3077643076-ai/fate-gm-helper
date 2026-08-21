@@ -1,0 +1,16 @@
+{
+  "name": "fate-gm-helper-backend",
+  "version": "1.0.0",
+  "description": "空想圣杯GM辅助系统 - Node.js后端",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js",
+    "test": "node test/skillTemplateNormalizer.test.js",
+    "backup": "node scripts/backup-db.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.0.0",
+    "cors": "^2.8.5",
+    "express": "^4.21.0"
+  }
+}
