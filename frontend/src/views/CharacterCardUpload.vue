@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useCharacterCardParser } from '../composables/useCharacterCardParser'
+import { useExcelParser } from '../composables/useExcelParser'
 import { useRPChecker } from '../composables/useRPChecker'
 import { createCharacterCard, listCharacterCards, getCharacterCard, deleteCharacterCard } from '../services/characterCard'
 import { retireCharacterCard, unretireCharacterCard } from '../services/characterCard'
@@ -31,12 +32,36 @@ let searchTimeout = null
 const masterServantClass = ref('')
 
 const { parse } = useCharacterCardParser()
+const { parseExcelFile } = useExcelParser()
+
+// ---- Excel 上传相关状态 ----
+const fileInputRef = ref(null)
+const excelParsed = ref(null) // Excel 解析出的卡对象
+const excelFileName = ref('') // 当前选择的文件名
+const excelError = ref('') // Excel 解析错误信息
 
 const sampleServant = `.st 职介 Rider 合计等级 70 合计筋力 55 合计耐久 55 合计敏捷 75 合计魔力 95 合计幸运 115 合计宝具 65 基础等级 70 基础筋力 50 基础耐久 50 基础敏捷 70 基础魔力 90 基础幸运 110 基础宝具 0 补正等级 0 补正筋力 5 补正耐久 5 补正敏捷 5 补正魔力 5 补正幸运 5 补正宝具 5 职介技能1 对魔力B(本职) 职介技能2 骑乘A(本职) 职介技能3 神性B 保有技能1 领袖气质A 保有技能2 皇帝特权A 保有技能3 太阳神的加护A 宝具1 光辉复合大神殿EX 宝具2 暗夜太阳船A+ 宝具3 热砂狮身兽A`
 
 const sampleMaster = `.st 等级40合计筋力5合计耐久5合计敏捷5合计魔力45合计幸运20合计回路60工坊1资源基盘工坊2强能法阵工坊3集束光标保有技能1超越回路B保有技能2增殖的源B保有技能3对胜利的确信A礼装1宝石吊坠礼装2礼装3`
 
 const sample = computed(() => cardType.value === 'MASTER' ? sampleMaster : sampleServant)
+
+// 保存一张已解析好的卡对象（文本解析和 Excel 解析共用此逻辑）
+async function saveCard(data) {
+  data.code = codeInput.value.trim()
+  data.cardType = cardType.value
+  // 御主卡时，将职介设置为所选从者阶职，方便在战役视图中按阶职归类
+  if (cardType.value === 'MASTER' && masterServantClass.value) {
+    data.className = masterServantClass.value
+  }
+  data.campaignId = isUniversal.value ? null : campaignId.value
+  parsed.value = data
+  submitting.value = true
+  const res = await createCharacterCard(data)
+  message.value = `保存成功，ID：${res.id}`
+  // 保存成功后刷新搜索结果
+  await performSearch()
+}
 
 async function handleParseAndSave() {
   message.value = ''
@@ -45,24 +70,59 @@ async function handleParseAndSave() {
     if (!codeInput.value.trim()) {
       throw new Error('请先输入代号')
     }
-    const data = parse(inputText.value, cardType.value)
-    data.code = codeInput.value.trim()
-    data.cardType = cardType.value
-    // 御主卡时，将职介设置为所选从者阶职，方便在战役视图中按阶职归类
-    if (cardType.value === 'MASTER' && masterServantClass.value) {
-      data.className = masterServantClass.value
+    let data
+    if (excelParsed.value) {
+      // 有 Excel 解析结果时优先保存它
+      data = excelParsed.value
+    } else {
+      data = parse(inputText.value, cardType.value)
     }
-    data.campaignId = isUniversal.value ? null : campaignId.value
-    parsed.value = data
-    submitting.value = true
-    const res = await createCharacterCard(data)
-    message.value = `保存成功，ID：${res.id}`
-    // 保存成功后刷新搜索结果
-    await performSearch()
+    await saveCard(data)
+    // 保存成功后清除待保存的 Excel 解析结果，避免重复保存
+    excelParsed.value = null
   } catch (err) {
     message.value = err.message || '解析/保存失败'
   } finally {
     submitting.value = false
+  }
+}
+
+// ---- Excel 文件处理 ----
+function onDragOver(e) {
+  e.preventDefault()
+}
+
+function onDrop(e) {
+  const file = e.dataTransfer.files && e.dataTransfer.files[0]
+  if (file) handleFile(file)
+}
+
+async function onFileSelect(e) {
+  const file = e.target.files && e.target.files[0]
+  if (file) await handleFile(file)
+  // 清空 input 的值，允许下次选择同一个文件
+  e.target.value = ''
+}
+
+async function handleFile(file) {
+  excelError.value = ''
+  try {
+    const data = await parseExcelFile(file)
+    excelParsed.value = data
+    excelFileName.value = file.name
+    // 自动识别卡类型（从者/御主）
+    cardType.value = data.cardType
+    // 代号未填时，用文件名当默认代号（可在输入框中修改）
+    if (!codeInput.value.trim()) {
+      codeInput.value = file.name.replace(/\.(xlsx|xls)$/i, '')
+    }
+    // 立即在下方预览解析结果
+    parsed.value = data
+    selectedCard.value = null
+    message.value = 'Excel 解析成功，请确认代号后点击"解析并保存"'
+  } catch (err) {
+    excelError.value = err.message || 'Excel 解析失败'
+    excelParsed.value = null
   }
 }
 
@@ -122,6 +182,11 @@ watch(isUniversal, (val) => {
   if (val) {
     campaignId.value = null
   }
+})
+
+// 用户开始编辑 .st 文本时，放弃待保存的 Excel 解析结果（避免保存错对象）
+watch(inputText, () => {
+  excelParsed.value = null
 })
 
 onMounted(() => {
@@ -241,9 +306,33 @@ const rpResult = computed(() => {
           <span>{{ sample }}</span>
         </div>
 
+        <div class="excel-upload">
+          <label class="block-label">或直接上传 Excel 角色卡（RC1.15 模板）</label>
+          <div
+            class="file-drop-zone"
+            @click="fileInputRef && fileInputRef.click()"
+            @dragover.prevent="onDragOver"
+            @drop.prevent="onDrop"
+          >
+            <input
+              ref="fileInputRef"
+              type="file"
+              accept=".xlsx,.xls"
+              class="file-input-hidden"
+              @change="onFileSelect"
+            />
+            <span>点击选择或拖拽 .xlsx / .xls 文件</span>
+            <span v-if="excelFileName" class="excel-file-name">{{ excelFileName }}</span>
+          </div>
+          <p v-if="excelParsed" class="excel-ok">
+            已解析：{{ excelParsed.cardType === 'SERVANT' ? '从者卡' : '御主卡' }}（职介：{{ excelParsed.className }}），确认上方代号后点"解析并保存"
+          </p>
+          <p v-if="excelError" class="excel-error">{{ excelError }}</p>
+        </div>
+
         <div class="excel-help">
-          <h3>Excel 导出模板（旧版人物卡使用）</h3>
-          <p>如果你使用旧版人物卡 Excel，可以在人物卡文件中添加以下公式，将整张卡导出为一行 .st 文本，然后复制到上面的输入框中。</p>
+          <h3>Excel 备用方案（直接上传不成功时用）</h3>
+          <p>如果上方直接上传不成功，可以在人物卡文件中添加以下公式，将整张卡导出为一行 .st 文本，然后复制到上面的输入框中。</p>
           <ul>
             <li>
               <strong>从者人物卡公式（填在任意空单元格中）：</strong>
@@ -637,6 +726,63 @@ const rpResult = computed(() => {
 .excel-steps {
   margin-top: 0.5rem;
   color: var(--color-text-secondary);
+}
+
+.excel-upload {
+  margin-top: 1rem;
+}
+
+.file-drop-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 1.25rem 1rem;
+  border: 2px dashed var(--color-border);
+  border-radius: 0.6rem;
+  background: #fafaf8;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.file-drop-zone:hover {
+  border-color: #667eea;
+  background: #f5f6ff;
+  color: #4a5bd9;
+}
+
+.file-input-hidden {
+  display: none;
+}
+
+.excel-file-name {
+  font-weight: 600;
+  color: #5f3dc4;
+  font-size: 0.9rem;
+  word-break: break-all;
+  text-align: center;
+}
+
+.excel-ok {
+  margin: 0.5rem 0 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  background: #e6f7e6;
+  border: 1px solid #b7e3b7;
+  color: #2e7d32;
+  font-size: 0.9rem;
+}
+
+.excel-error {
+  margin: 0.5rem 0 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  background: #fff0f0;
+  border: 1px solid #f0c0c0;
+  color: #b71c1c;
+  font-size: 0.9rem;
 }
 
 .message {
