@@ -5,6 +5,7 @@ import BattleSheetPage from '../views/BattleSheetPage.vue'
 import CharacterCardUpload from '../views/CharacterCardUpload.vue'
 import SkillRecord from '../views/SkillRecord.vue'
 import SkillTemplateManage from '../views/SkillTemplateManage.vue'
+import RuleAdvisor from '../views/RuleAdvisor.vue'
 
 const routes = [
   { path: '/', name: 'home', component: Home },
@@ -15,6 +16,7 @@ const routes = [
   { path: '/dashboard-campaign', redirect: '/battle-control' },
   { path: '/skill-record', name: 'skill-record', component: SkillRecord },
   { path: '/skill-templates', name: 'skill-templates', component: SkillTemplateManage },
+  { path: '/rule-advisor', name: 'rule-advisor', component: RuleAdvisor },
 ]
 
 const router = createRouter({

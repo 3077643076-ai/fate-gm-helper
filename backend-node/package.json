@@ -6,7 +6,8 @@
     "start": "node index.js",
     "dev": "node --watch index.js",
     "test": "node test/skillTemplateNormalizer.test.js",
-    "backup": "node scripts/backup-db.js"
+    "backup": "node scripts/backup-db.js",
+    "build-kb": "node scripts/build-kb.js"
   },
   "dependencies": {
     "better-sqlite3": "^11.0.0",

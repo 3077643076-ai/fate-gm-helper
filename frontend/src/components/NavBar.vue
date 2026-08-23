@@ -11,6 +11,7 @@
           <li><RouterLink to="/character-card-upload" class="nav-link" active-class="active">角色卡上传</RouterLink></li>
           <li><RouterLink to="/battle-control" class="nav-link" active-class="active">战役控制</RouterLink></li>
           <li><RouterLink to="/skill-templates" class="nav-link" active-class="active">技能模板</RouterLink></li>
+          <li><RouterLink to="/rule-advisor" class="nav-link" active-class="active">规则判定</RouterLink></li>
         </ul>
       </nav>
     </div>

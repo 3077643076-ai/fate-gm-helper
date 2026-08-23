@@ -7,9 +7,8 @@ dist/
 /temp/
 *.log
 
-# 本项目生成的 SQLite 数据库和备份，不要提交到 GitHub
-backend-node/data/*.db
-backend-node/data/*.db-*
+# 本项目生成的 SQLite 数据库、备份和本地配置（含 DeepSeek key），不要提交到 GitHub
+backend-node/data/
 backend-node/backups/
 
 # Java / Maven 构建产物

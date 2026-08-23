@@ -12,6 +12,7 @@ const characterStatus = require('./routes/characterStatus');
 const actionSubmissions = require('./routes/actionSubmissions');
 const skillTemplates = require('./routes/skillTemplates');
 const qqBindings = require('./routes/qqBindings');
+const kb = require('./routes/kb');
 
 const app = express();
 const PORT = process.env.PORT || 8100;
@@ -65,6 +66,10 @@ app.get('/api', (req, res) => {
       'DELETE /api/skill-templates/:id',
       'GET    /api/qq-bindings',
       'POST   /api/qq-bindings',
+      'GET    /api/kb/status',
+      'POST   /api/kb/rebuild',
+      'GET    /api/kb/search',
+      'POST   /api/kb/advise',
     ],
   });
 });
@@ -80,6 +85,7 @@ app.use('/api/character-status', characterStatus);
 app.use('/api/action-submissions', actionSubmissions);
 app.use('/api/skill-templates', skillTemplates);
 app.use('/api/qq-bindings', qqBindings);
+app.use('/api/kb', kb);
 
 // 托管前端静态文件（生产模式）
 const frontendDist = path.join(__dirname, '..', 'frontend', 'dist');

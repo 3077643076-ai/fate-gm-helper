@@ -208,6 +208,21 @@ function initSchema(db) {
       created_at TEXT DEFAULT (datetime('now')),
       UNIQUE(battle_sheet_id)
     );
+
+    CREATE TABLE IF NOT EXISTS kb_chunk (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_file TEXT NOT NULL,
+      title TEXT NOT NULL,
+      heading TEXT,
+      heading_level INTEGER DEFAULT 0,
+      content TEXT NOT NULL,
+      char_count INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE VIRTUAL TABLE IF NOT EXISTS kb_chunk_fts USING fts5(
+      source_file, title, content
+    );
   `);
 
   ensureColumns(db, 'battle_sheet', {
