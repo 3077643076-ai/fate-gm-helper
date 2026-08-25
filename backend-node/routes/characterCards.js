@@ -1,8 +1,14 @@
 const express = require('express');
 const { getDb } = require('../db');
 const { parseRequiredId } = require('../lib/validators');
+const { validateCharacterCard } = require('../lib/characterCardValidator');
 
 const router = express.Router();
+
+// 对前端传来的未保存卡片做一次体检，方便保存前发现属性/RP/宝具值问题。
+router.post('/validate', (req, res) => {
+  res.json(validateCharacterCard(req.body || {}));
+});
 
 // 创建
 router.post('/', (req, res) => {
@@ -54,6 +60,16 @@ router.get('/:id', (req, res) => {
   const row = db.prepare('SELECT * FROM character_card WHERE id = ?').get(id);
   if (!row) return res.status(404).json({ error: '未找到角色卡' });
   res.json(formatCard(row));
+});
+
+// 对数据库里已经保存的卡片做体检。
+router.get('/:id/validate', (req, res) => {
+  const db = getDb();
+  const id = parseRequiredId(req.params.id, 'id', res);
+  if (id === null) return;
+  const row = db.prepare('SELECT * FROM character_card WHERE id = ?').get(id);
+  if (!row) return res.status(404).json({ error: '未找到角色卡' });
+  res.json(validateCharacterCard(formatCard(row)));
 });
 
 // 列表/搜索

@@ -22,6 +22,17 @@ export async function listCharacterCards(page = 0, size = 20, keyword = null, ca
   return request(`${API_BASE}/character-cards?${params.toString()}`);
 }
 
+export async function validateCharacterCard(payload) {
+  return request(`${API_BASE}/character-cards/validate`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function validateSavedCharacterCard(id) {
+  return request(`${API_BASE}/character-cards/${id}/validate`);
+}
+
 export async function deleteCharacterCard(id) {
   return request(`${API_BASE}/character-cards/${id}`, {
     method: 'DELETE',

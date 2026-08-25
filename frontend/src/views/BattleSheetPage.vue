@@ -466,10 +466,12 @@ function getTemplateConditions(template) {
 
 function describeEffect(effect) {
   if (!effect) return '需手动裁决'
-  if (effect.kind === 'stat_modifier') return `${getStatLabel(effect.stat)}${signed(effect.value)}`
-  if (effect.kind === 'win_rate_modifier') return `己方胜率${signed(effect.value)}`
-  if (effect.kind === 'enemy_win_rate_modifier') return `敌方胜率${signed(effect.value)}`
-  if (effect.kind === 'select_stat_modifier') return `选择属性${signed(effect.value)}（需 GM 选择）`
+  const valueText = effect.valueByRank || effect.values ? '按等级取值' : signed(effect.value)
+  if (effect.kind === 'stat_modifier') return `${getStatLabel(effect.stat)}${valueText}`
+  if (effect.kind === 'stat_group_modifier') return `${effect.group || '属性组'}${valueText}`
+  if (effect.kind === 'win_rate_modifier') return `己方胜率${valueText}`
+  if (effect.kind === 'enemy_win_rate_modifier') return `敌方胜率${valueText}`
+  if (effect.kind === 'select_stat_modifier') return `选择属性${valueText}（需 GM 选择）`
   return effect.label || effect.text || '需手动裁决'
 }
 function describeSkillTemplate(template) {

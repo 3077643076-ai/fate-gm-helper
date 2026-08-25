@@ -63,6 +63,45 @@ function getTemplateEffects(template) {
   return Array.isArray(parsed) ? parsed : []
 }
 
+// 从技能有效等级里取基础等级，A+ / A++ 都按 A 查表，方便 JSON 写成 { A: 30, B: 25 }。
+function normalizeRank(rank) {
+  const text = String(rank || '').toUpperCase().trim()
+  const match = text.match(/EX|[A-E]/)
+  return match ? match[0] : ''
+}
+
+// 结构化效果允许三种写法：固定 value、valueByRank、values。
+// 这样同一个技能模板可以自动按角色卡上的 A/B/C/D/E 等级取正确数值。
+function resolveEffectValue(effect = {}, item = {}) {
+  const rank = normalizeRank(item.effectiveRank || item.originalRank || effect.rank)
+  const table = effect.valueByRank || effect.values || null
+  if (table && typeof table === 'object' && !Array.isArray(table)) {
+    const value = table[rank] ?? table.default ?? table.DEFAULT
+    return Number(value) || 0
+  }
+  return Number(effect.value) || 0
+}
+
+function getSideBucket(summary, side, bucket) {
+  if (bucket === 'stats') return side === 'blue' ? summary.blueStats : summary.yellowStats
+  return null
+}
+
+function getEnemySide(side) {
+  return side === 'blue' ? 'yellow' : 'blue'
+}
+
+// 很多规则写“全属性”“宝具以外全属性”“上三属性”，这里集中展开，避免每个模板重复写 5 行。
+function applyStatGroup(target, group, value) {
+  const groups = {
+    all: ['strength', 'endurance', 'agility', 'mana', 'luck', 'noblePhantasm'],
+    non_noble: ['strength', 'endurance', 'agility', 'mana', 'luck'],
+    upper_three: ['strength', 'endurance', 'agility'],
+  }
+  const stats = groups[group] || [group]
+  for (const stat of stats) target[stat] = (target[stat] || 0) + value
+}
+
 function getPhaseForTemplate(template) {
   return TIMING_TO_PHASE[template?.timing] || 'MAIN'
 }
@@ -166,31 +205,38 @@ export function applyQueueEffects({ queue = [], phaseKey = null } = {}) {
       continue
     }
 
-    for (const effect of effects) {
+     for (const effect of effects) {
       const sidePrefix = item.side === 'blue' ? 'blue' : 'yellow'
+      const targetSide = effect.target === 'enemy' ? getEnemySide(sidePrefix) : sidePrefix
+      const value = resolveEffectValue(effect, item)
       if (effect.kind === 'stat_modifier' && effect.stat) {
-        const target = sidePrefix === 'blue' ? summary.blueStats : summary.yellowStats
-        target[effect.stat] = (target[effect.stat] || 0) + (Number(effect.value) || 0)
-        summary.applied.push(`${item.skillName}：${effect.stat} ${Number(effect.value) || 0}`)
+        const target = getSideBucket(summary, targetSide, 'stats')
+        target[effect.stat] = (target[effect.stat] || 0) + value
+        summary.applied.push(`${item.skillName}：${effect.stat} ${value}`)
+      } else if (effect.kind === 'stat_group_modifier' && effect.group) {
+        const target = getSideBucket(summary, targetSide, 'stats')
+        applyStatGroup(target, effect.group, value)
+        summary.applied.push(`${item.skillName}：${effect.group} ${value}`)
       } else if (effect.kind === 'select_stat_modifier' && item.selectedStat) {
-        const target = sidePrefix === 'blue' ? summary.blueStats : summary.yellowStats
-        target[item.selectedStat] = (target[item.selectedStat] || 0) + (Number(effect.value) || 0)
-        summary.applied.push(`${item.skillName}：${item.selectedStat} ${Number(effect.value) || 0}`)
+        const target = getSideBucket(summary, targetSide, 'stats')
+        target[item.selectedStat] = (target[item.selectedStat] || 0) + value
+        summary.applied.push(`${item.skillName}：${item.selectedStat} ${value}`)
       } else if (effect.kind === 'win_rate_modifier') {
-        if (sidePrefix === 'blue') summary.blueWinRate += Number(effect.value) || 0
-        else summary.yellowWinRate += Number(effect.value) || 0
-        summary.applied.push(`${item.skillName}：胜率 ${Number(effect.value) || 0}`)
+        if (targetSide === 'blue') summary.blueWinRate += value
+        else summary.yellowWinRate += value
+        summary.applied.push(`${item.skillName}：胜率 ${value}`)
       } else if (effect.kind === 'enemy_win_rate_modifier') {
-        if (sidePrefix === 'blue') summary.yellowWinRate += Number(effect.value) || 0
-        else summary.blueWinRate += Number(effect.value) || 0
-        summary.applied.push(`${item.skillName}：敌方胜率 ${Number(effect.value) || 0}`)
+        const enemySide = getEnemySide(sidePrefix)
+        if (enemySide === 'blue') summary.blueWinRate += value
+        else summary.yellowWinRate += value
+        summary.applied.push(`${item.skillName}：敌方胜率 ${value}`)
       } else if (effect.kind === 'guarantee_modifier') {
-        if (sidePrefix === 'blue') summary.blueGuarantee += Number(effect.value) || 0
-        else summary.yellowGuarantee += Number(effect.value) || 0
-        summary.applied.push(`${item.skillName}：保底 ${Number(effect.value) || 0}`)
+        if (targetSide === 'blue') summary.blueGuarantee += value
+        else summary.yellowGuarantee += value
+        summary.applied.push(`${item.skillName}：保底 ${value}`)
       } else if (effect.kind === 'mana_cost') {
-        if (sidePrefix === 'blue') summary.blueManaCost += Number(effect.value) || 0
-        else summary.yellowManaCost += Number(effect.value) || 0
+        if (targetSide === 'blue') summary.blueManaCost += value
+        else summary.yellowManaCost += value
       } else {
         summary.manual.push(`${item.skillName}：${effect.text || effect.label || '需 GM 裁决'}`)
       }

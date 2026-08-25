@@ -4,7 +4,7 @@ import { useRoute } from 'vue-router'
 import { useCharacterCardParser } from '../composables/useCharacterCardParser'
 import { useExcelParser } from '../composables/useExcelParser'
 import { useRPChecker } from '../composables/useRPChecker'
-import { createCharacterCard, listCharacterCards, getCharacterCard, deleteCharacterCard } from '../services/characterCard'
+import { createCharacterCard, listCharacterCards, getCharacterCard, deleteCharacterCard, validateCharacterCard } from '../services/characterCard'
 import { retireCharacterCard, unretireCharacterCard } from '../services/characterCard'
 import { listCampaigns, getSelectedCampaign } from '../services/campaign'
 
@@ -24,6 +24,8 @@ const searchQuery = ref('')
 const searchLoading = ref(false)
 const searchResults = ref([])
 const selectedCard = ref(null)
+const validationResult = ref(null)
+const validationLoading = ref(false)
 const campaigns = ref([])
 const selectedCampaignId = ref(null) // 搜索时选择的战役/类别
 let searchTimeout = null
@@ -46,6 +48,24 @@ const sampleMaster = `.st 等级40合计筋力5合计耐久5合计敏捷5合计�
 
 const sample = computed(() => cardType.value === 'MASTER' ? sampleMaster : sampleServant)
 
+// 角色卡体检：把解析后的卡发给后端，让统一规则检查属性、RP、宝具值等问题。
+async function runCardValidation(card) {
+  validationResult.value = null
+  if (!card) return
+  validationLoading.value = true
+  try {
+    validationResult.value = await validateCharacterCard(card)
+  } catch (err) {
+    validationResult.value = {
+      ok: false,
+      summary: { errors: 1, warnings: 0, infos: 0 },
+      issues: [{ severity: 'error', message: err.message || '角色卡体检失败' }],
+    }
+  } finally {
+    validationLoading.value = false
+  }
+}
+
 // 保存一张已解析好的卡对象（文本解析和 Excel 解析共用此逻辑）
 async function saveCard(data) {
   data.code = codeInput.value.trim()
@@ -59,6 +79,7 @@ async function saveCard(data) {
   submitting.value = true
   const res = await createCharacterCard(data)
   message.value = `保存成功，ID：${res.id}`
+  await runCardValidation(res)
   // 保存成功后刷新搜索结果
   await performSearch()
 }
@@ -77,6 +98,7 @@ async function handleParseAndSave() {
     } else {
       data = parse(inputText.value, cardType.value)
     }
+    await runCardValidation(data)
     await saveCard(data)
     // 保存成功后清除待保存的 Excel 解析结果，避免重复保存
     excelParsed.value = null
@@ -119,6 +141,7 @@ async function handleFile(file) {
     // 立即在下方预览解析结果
     parsed.value = data
     selectedCard.value = null
+    await runCardValidation(data)
     message.value = 'Excel 解析成功，请确认代号后点击"解析并保存"'
   } catch (err) {
     excelError.value = err.message || 'Excel 解析失败'
@@ -200,6 +223,7 @@ async function handleSelect(id) {
     selectedCard.value = await getCharacterCard(id)
     parsed.value = null
     inputText.value = ''
+    await runCardValidation(selectedCard.value)
   } catch (err) {
     message.value = err.message || '获取详情失败'
   }
@@ -443,6 +467,26 @@ const rpResult = computed(() => {
     </div>
 
     <p v-if="message" class="message">{{ message }}</p>
+
+    <!-- 角色卡体检：保存前后都能看到问题，避免带着错卡进入战斗表。 -->
+    <div v-if="validationLoading || validationResult" class="validation-panel" :class="{ 'has-error': validationResult?.summary?.errors }">
+      <div class="validation-header">
+        <h2>角色卡自动体检</h2>
+        <span v-if="validationLoading">检查中...</span>
+        <span v-else-if="validationResult?.ok" class="validation-ok">未发现阻断问题</span>
+        <span v-else class="validation-bad">
+          错误 {{ validationResult?.summary?.errors || 0 }} / 警告 {{ validationResult?.summary?.warnings || 0 }} / 提示 {{ validationResult?.summary?.infos || 0 }}
+        </span>
+      </div>
+      <ul v-if="validationResult?.issues?.length" class="validation-list">
+        <li v-for="(issue, idx) in validationResult.issues" :key="idx" :class="`issue-${issue.severity}`">
+          <strong>{{ issue.severity === 'error' ? '错误' : issue.severity === 'warning' ? '警告' : '提示' }}</strong>
+          <span>{{ issue.message }}</span>
+          <small v-if="issue.path">{{ issue.path }}</small>
+        </li>
+      </ul>
+      <p v-else-if="validationResult" class="validation-empty">这张卡的基础格式、属性合计和资源点估算都通过。</p>
+    </div>
 
     <!-- RP 资源点统计面板 -->
     <div v-if="rpResult" class="rp-panel">
@@ -726,6 +770,82 @@ const rpResult = computed(() => {
 .excel-steps {
   margin-top: 0.5rem;
   color: var(--color-text-secondary);
+}
+
+/* ===== 角色卡体检面板：展示后端自动找出的格式、属性和资源点问题 ===== */
+.validation-panel {
+  border: 1px solid #d8e5d1;
+  border-radius: 0.8rem;
+  padding: 1rem;
+  background: #f8fff5;
+}
+
+.validation-panel.has-error {
+  border-color: #f0b4b4;
+  background: #fff7f7;
+}
+
+.validation-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.validation-header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.validation-ok {
+  color: #15803d;
+  font-weight: 700;
+}
+
+.validation-bad {
+  color: #b91c1c;
+  font-weight: 700;
+}
+
+.validation-list {
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.validation-list li {
+  display: flex;
+  gap: 0.55rem;
+  align-items: baseline;
+  border-radius: 0.5rem;
+  padding: 0.55rem 0.65rem;
+  background: #fff;
+}
+
+.validation-list small {
+  margin-left: auto;
+  color: #6b7280;
+  font-family: monospace;
+}
+
+.issue-error strong {
+  color: #b91c1c;
+}
+
+.issue-warning strong {
+  color: #b45309;
+}
+
+.issue-info strong {
+  color: #2563eb;
+}
+
+.validation-empty {
+  margin: 0.65rem 0 0;
+  color: #15803d;
 }
 
 .excel-upload {

@@ -14,6 +14,7 @@ const statModifiers = JSON.stringify({ strength: 10 })
 const skillTemplateMap = new Map([
   ['勇猛', { name: '勇猛', timing: '常驻', effects: [{ kind: 'win_rate_modifier', value: 30 }] }],
   ['魔力放出', { name: '魔力放出', timing: '主要工序', effects: [{ kind: 'select_stat_modifier', value: 10 }, { kind: 'win_rate_modifier', value: 5 }] }],
+  ['复仇者', { name: '复仇者', timing: '常驻', effects: [{ kind: 'stat_group_modifier', group: 'non_noble', valueByRank: { A: 30, B: 25, C: 20, D: 15, E: 10 } }] }],
   ['旧模板', { name: '旧模板', timing: '战斗开始时', statModifiers, winRateModifier: 5 }],
 ])
 
@@ -26,7 +27,7 @@ const blueSlots = [
       id: 1,
       className: 'Saber',
       code: '阿尔托莉雅',
-      classSkills: [],
+      classSkills: [{ name: '复仇者', rank: 'C' }],
       personalSkills: [{ name: '勇猛', rank: 'C' }, { name: '魔力放出', rank: 'B' }],
       noblePhantasms: [],
     },
@@ -59,6 +60,11 @@ const disabledPassive = queue.map(item => item.skillName === '勇猛'
   : item)
 const disabledSummary = applyQueueEffects({ queue: disabledPassive, phaseKey: 'PASSIVE' })
 assert.equal(disabledSummary.blueWinRate, 0)
+
+const passiveSummary = applyQueueEffects({ queue, phaseKey: 'PASSIVE' })
+assert.equal(passiveSummary.blueStats.strength, 20)
+assert.equal(passiveSummary.blueStats.endurance, 20)
+assert.equal(passiveSummary.blueStats.noblePhantasm, 0)
 
 const phaseState = createDefaultPhaseState()
 for (const key of ['FORMATION', 'PASSIVE', 'BATTLE_START', 'INITIAL', 'MAIN', 'FINAL']) {

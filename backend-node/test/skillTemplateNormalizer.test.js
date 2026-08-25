@@ -2,6 +2,7 @@ const assert = require('assert');
 const { getDb } = require('../db');
 const { formatBinding } = require('../routes/qqBindings');
 const { formatSnapshot } = require('../routes/battleSheets');
+const { validateCharacterCard } = require('../lib/characterCardValidator');
 const {
   normalizeSkillTemplatePayload,
   formatSkillTemplateRow,
@@ -113,5 +114,29 @@ const snapshot = formatSnapshot({
 });
 assert.strictEqual(snapshot.battleSheetId, 2);
 assert.strictEqual(snapshot.snapshot.winRateResult.blueFinal, 65);
+
+const validServantCard = {
+  code: '测试从者',
+  className: 'Saber',
+  cardType: 'SERVANT',
+  rawText: '.st test',
+  totalStats: { level: 70, strength: 20, endurance: 30, agility: 20, mana: 10, luck: 20, noblePhantasm: 50 },
+  baseStats: { level: 70, strength: 20, endurance: 30, agility: 20, mana: 10, luck: 20, noblePhantasm: 50 },
+  correctionStats: { level: 0, strength: 0, endurance: 0, agility: 0, mana: 0, luck: 0, noblePhantasm: 0 },
+  classSkills: [{ name: '对魔力E' }],
+  personalSkills: [{ name: '直感E' }],
+  noblePhantasms: [{ name: '测试宝具A' }],
+};
+assert.strictEqual(validateCharacterCard(validServantCard).ok, true);
+
+const brokenServantCard = {
+  ...validServantCard,
+  totalStats: { ...validServantCard.totalStats, strength: 25 },
+  baseStats: { ...validServantCard.baseStats, strength: 21 },
+};
+const validation = validateCharacterCard(brokenServantCard);
+assert.strictEqual(validation.ok, false);
+assert.ok(validation.issues.some(issue => issue.code === 'stat_total_mismatch'));
+assert.ok(validation.issues.some(issue => issue.code === 'stat_not_multiple_of_5'));
 
 console.log('skillTemplateNormalizer tests passed');
