@@ -2,7 +2,7 @@
 
 空想圣杯规则的 GM 辅助系统。目标是把战役管理、角色卡记录、行动提交、战斗表计算、状态同步这些重复工作自动化，让 GM 更容易开团。
 
-本项目按本地/私有工具设计，不准备挂公网；核心体验是启动后在浏览器打开本机地址直接使用。
+本项目按本地/私有工具设计，不准备挂公网；核心体验是启动后在本机独立窗口使用，也保留浏览器访问方式。
 
 ## 当前状态
 - 前端：Vue 3 + Vite，包含首页、战役控制台、角色卡上传/检索、战斗表页面、技能模板库。
@@ -34,8 +34,17 @@
 
 因此优先保证：一键启动、SQLite 数据不丢、备份方便、错误提示清楚。
 
-### 本地一键启动（推荐）
+### 本地独立窗口启动（推荐）
 Windows 下双击：
+
+```text
+start-desktop.bat
+```
+
+脚本会先构建前端、启动轻量后端，再用 Edge/Chrome 的 app 模式打开独立窗口。这个窗口本质上还是本地网页壳，但看起来更像桌面应用，不需要额外安装 Electron。
+
+### 本地浏览器启动
+如果只想启动服务，然后自己打开浏览器，也可以双击：
 
 ```text
 start-local.bat
@@ -114,6 +123,18 @@ my-koishi-bot/plugins/fate-actions
 插件默认连接：`http://localhost:8100/api`。如果 Koishi 和本工具不在同一台机器上，把插件配置里的 API 基地址改成局域网地址即可。
 
 QQ 群绑定战役已经写入本地 SQLite，Koishi 重启后仍会从后端查询当前绑定。
+
+### NapCat / QQ 接入
+本仓库不内置 NapCat 本体。NapCat 需要单独下载并登录 QQ，本项目只提供接入说明和示例配置：
+
+```text
+tools/napcat/README.md
+tools/napcat/onebot.example.json
+```
+
+推荐把 NapCat 放到 `tools/napcat/runtime/`，该目录已被 Git 忽略，避免误传登录数据和 token。
+
+QQ 消息链路：NapCat 登录 QQ → Koishi adapter-onebot → `fate-actions` 插件 → `http://localhost:8100/api` → SQLite。
 
 主要指令：
 - `绑定战役 <战役ID>`

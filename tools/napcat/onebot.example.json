@@ -1,0 +1,23 @@
+{
+  "note": "示例：给 NapCat/OneBot 连接 Koishi 用。字段名以你实际 NapCat 版本界面为准。",
+  "connection": {
+    "type": "websocket-client",
+    "url": "ws://127.0.0.1:5140/onebot",
+    "accessToken": "CHANGE_ME"
+  },
+  "koishi": {
+    "configFile": "my-koishi-bot/koishi.yml",
+    "adapter": "adapter-onebot",
+    "selfId": "你的机器人QQ号",
+    "token": "CHANGE_ME"
+  },
+  "security": {
+    "doNotCommit": [
+      "真实 QQ 号",
+      "accessToken",
+      "session",
+      "device.json",
+      "NapCat 登录数据"
+    ]
+  }
+}

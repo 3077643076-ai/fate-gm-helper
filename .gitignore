@@ -32,6 +32,16 @@ my-koishi-bot/.env
 my-koishi-bot/.env.local
 my-koishi-bot/koishi.yml
 
+# NapCat 本体、QQ 登录数据和本地 token 不进仓库
+tools/napcat/runtime/
+tools/napcat/data/
+tools/napcat/config/
+tools/napcat/**/*.db
+tools/napcat/**/*.log
+tools/napcat/**/*token*
+tools/napcat/**/*session*
+tools/napcat/**/*device*
+
 # 临时资料和截图
 1.15/
 battle-sheet-alignment.png
