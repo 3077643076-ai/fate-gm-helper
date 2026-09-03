@@ -4,6 +4,7 @@ import { onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { listCampaigns, createCampaign, deleteCampaign, getSelectedCampaign } from '../services/campaign'
 import { closeCurrentRound, listRoundHistory, getCurrentRound, createNextRound } from '../services/round'
+import { listActionRecords, saveActionRecords } from '../services/actionRecord'
 import { listCharacterCards } from '../services/characterCard'
 import { listLeylines, createLeyline, updateLeyline, deleteLeyline } from '../services/leyline'
 import { listLeylineAssignments, upsertLeylineAssignment } from '../services/leyline'
@@ -24,6 +25,7 @@ import {
   getStatusType,
   getStatusTypeDisplayName
 } from '../services/statusEffects'
+import { listBindingsByCampaign, deleteBinding } from '../services/qqBinding'
 
 const route = useRoute()
 const router = useRouter()
@@ -146,13 +148,15 @@ function removeStatusEffect(slotIndex, effectName) {
   updateStatusEffects(slotIndex, effects, true)
 }
 
-// 行动顺序数据（按结算顺序：机动-魂食-干涉-解放-制造-信息-休整-摧毁工房）
+// 行动顺序数据（按结算顺序：机动-魂食-干涉-介入-解放-制造-信息-休整-摧毁工房）
 const actionOrder = ref([
   { type: '机动', actions: ['', '', '', '', '', '', ''] },
   { type: '魂食', actions: ['', '', '', '', '', '', ''] },
   { type: '干涉', actions: ['', '', '', '', '', '', ''] },
+  { type: '介入', actions: ['', '', '', '', '', '', ''] },
   { type: '解放', actions: ['', '', '', '', '', '', ''] },
   { type: '制造', actions: ['', '', '', '', '', '', ''] },
+  { type: '结界', actions: ['', '', '', '', '', '', ''] },
   { type: '信息', actions: ['', '', '', '', '', '', ''] },
   { type: '休整', actions: ['', '', '', '', '', '', ''] },
   { type: '摧毁工房', actions: ['', '', '', '', '', '', ''] },
@@ -175,9 +179,11 @@ function detectActionCategoryFromText(text) {
   if (t.includes('机动') || t.includes('移动')) return '机动'
   if (t.includes('魂食')) return '魂食'
   if (t.includes('干涉')) return '干涉'
+  if (t.includes('介入')) return '介入'
   if (t.includes('解放')) return '解放'
   if (t.includes('摧毁工') || (t.includes('摧毁') && t.includes('工坊'))) return '摧毁工房'
   if (t.includes('制造') || t.includes('建筑') || t.includes('工坊') || t.includes('礼装')) return '制造'
+  if (t.includes('结界')) return '结界'
   if (t.includes('侦察') || t.includes('侦查') || t.includes('信息') || t.includes('调查') || t.includes('资料') || t.includes('情报')) return '信息'
   if (t.includes('休整')) return '休整'
   // fallback: if contains keywords likely 机动/魂食/干涉
@@ -257,6 +263,7 @@ async function loadCampaigns() {
         campaignName.value = campaign.name
         await loadCharacterCards()
         await loadLeylines()
+        await loadQqBindings()
         // load current round from backend
         try {
           const r = await getCurrentRound(campaignId.value)
@@ -270,6 +277,10 @@ async function loadCampaigns() {
         try {
           await loadHistory()
         } catch (e) { console.error('加载历史记录失败', e) }
+        // load manual action records (editable workflow)
+        try {
+          await loadActionRecords()
+        } catch (e) { console.error('加载行动记录失败', e) }
       }
     } else if (campaigns.value.length > 0) {
       // 如果没有路由参数，使用第一个战役
@@ -278,6 +289,7 @@ async function loadCampaigns() {
       campaignName.value = firstCampaign.name
       await loadCharacterCards()
       await loadLeylines()
+      await loadQqBindings()
       try {
         const r = await getCurrentRound(campaignId.value)
         if (r && r.round && r.round.turnNumber != null) {
@@ -289,6 +301,9 @@ async function loadCampaigns() {
       try {
         await loadHistory()
       } catch (e) { console.error('加载历史记录失败', e) }
+      try {
+        await loadActionRecords()
+      } catch (e) { console.error('加载行动记录失败', e) }
     }
   } catch (err) {
     console.error('加载战役列表失败:', err)
@@ -331,6 +346,7 @@ async function handleDeleteCampaigns() {
     selectAll.value = false
     showDeleteDialog.value = false
     await loadCampaigns()
+    await loadQqBindings()
     // 如果删除的是当前战役，切换到第一个战役
     if (ids.includes(campaignId.value)) {
       if (campaigns.value.length > 0) {
@@ -376,7 +392,49 @@ async function selectCampaign(campaign) {
   campaignName.value = campaign.name
   await loadCharacterCards()
   await loadLeylines()
+  await loadQqBindings()
+  await loadActionRecords()
   router.push(`/battle-control/${campaign.id}`)
+}
+
+// ===== QQ 群绑定 =====
+const qqBindings = ref([])
+const qqBindingsLoading = ref(false)
+const qqBindingsError = ref('')
+
+function formatPlatformName(platform) {
+  const map = { onebot: 'QQ', qq: 'QQ', discord: 'Discord', telegram: 'Telegram', kook: 'KOOK' }
+  return map[platform] || platform || '未知平台'
+}
+
+async function loadQqBindings() {
+  if (!campaignId.value) {
+    qqBindings.value = []
+    return
+  }
+  qqBindingsLoading.value = true
+  qqBindingsError.value = ''
+  try {
+    qqBindings.value = (await listBindingsByCampaign(campaignId.value)) || []
+  } catch (err) {
+    qqBindingsError.value = err.message || '加载 QQ 群绑定失败'
+    qqBindings.value = []
+  } finally {
+    qqBindingsLoading.value = false
+  }
+}
+
+async function handleDeleteBinding(binding) {
+  const confirmText = binding.groupName
+    ? `确定要解绑群「${binding.groupName}」（${binding.guildId}）吗？`
+    : `确定要解绑 ${binding.platform} 群 ${binding.guildId} 吗？`
+  if (!window.confirm(confirmText)) return
+  try {
+    await deleteBinding(binding.id)
+    qqBindings.value = qqBindings.value.filter(b => b.id !== binding.id)
+  } catch (err) {
+    alert('解绑失败：' + (err.message || '未知错误'))
+  }
 }
 
 // 跳转到人物卡上传页面
@@ -481,7 +539,7 @@ function updateRoundInfoFromStatuses() {
     const status = characterStatuses.value.get(card.id)
     if (!status) return
 
-    const cls = normalizeClassName(card.className)
+    const cls = getSlotClassForCard(card)
     const idx = roundInfo.value.classes.indexOf(cls)
     if (idx === -1) return
 
@@ -527,7 +585,7 @@ async function loadLeylines() {
       (ley.assignedCharacterIds || []).forEach(cid => {
         const card = characterCards.value.find(c => c.id === cid)
         if (!card) return
-        const cls = normalizeClassName(card.className)
+        const cls = getSlotClassForCard(card)
         const idx = roundInfo.value.classes.indexOf(cls)
         if (idx === -1) return
         if (card.cardType === 'SERVANT') {
@@ -598,6 +656,29 @@ function normalizeClassName(className) {
   return ''
 }
 
+// 御主槽位覆盖：御主职业（体术师/魔术师/异能者/代行者等）无法映射到从者阶职，
+// 这里按御主代号指定其所在的阶职槽位。正式使用时 GM 可在页面/数据库调整。
+// 当前为测试用的随机配对。
+const MASTER_SLOT_OVERRIDES = {
+  '关羽': '狂',    // 关羽 → 狂槽位（魏延）
+  '曹丕': '弓',    // 曹丕 → 弓槽位（司马师）
+  '曹植': '杀',    // 曹植 → 杀槽位（贾诩）
+  '火焰驹': '骑',  // 火焰驹 → 骑槽位（文鸯）
+  '左慈': '术',    // 左慈 → 术槽位（张角）
+  '荀彧': '枪',    // 荀彧 → 枪槽位（吕布）
+  '阿斗': '剑',    // 阿斗 → 剑槽位（刘协）
+}
+
+// 角色卡对应的槽位阶职：从者按职介，御主优先按 override，无 override 时尝试职业名匹配
+function getSlotClassForCard(card) {
+  if (!card) return ''
+  if (card.cardType === 'MASTER') {
+    const override = MASTER_SLOT_OVERRIDES[card.code]
+    if (override) return override
+  }
+  return normalizeClassName(card.className)
+}
+
 async function addLeyline() {
   if (!campaignId.value) {
     alert('请先选择战役')
@@ -666,7 +747,7 @@ const servantCodes = computed(() => {
 const masterCodes = computed(() => {
   return roundInfo.value.classes.map((slotCls) => {
     const card = characterCards.value.find(
-      (c) => c.cardType === 'MASTER' && normalizeClassName(c.className) === slotCls,
+      (c) => c.cardType === 'MASTER' && getSlotClassForCard(c) === slotCls,
     )
     return card?.code || ''
   })
@@ -679,7 +760,8 @@ const assignmentSaving = ref(false)
 // 历史动作（按回合记录）
 const historyActions = ref([])
 // 固定的行动记录表头与行（跳伞 + 第1~14天昼夜）
-const actionRecordHeaderClasses = ['剑', '弓', '枪', '骑', '术', '杀', '狂']
+// 注意：顺序必须与 roundInfo.classes 一致（弓枪骑剑杀术狂），历史快照按此顺序存储
+const actionRecordHeaderClasses = ['弓', '枪', '骑', '剑', '杀', '术', '狂']
 
 function buildActionRecordRowLabels() {
   const labels = ['跳伞']
@@ -692,6 +774,165 @@ function buildActionRecordRowLabels() {
   return labels
 }
 const actionRecordRowLabels = buildActionRecordRowLabels()
+
+// ===== 行动记录可编辑工作流（行动表 Excel 的网页版兜底） =====
+// 数据源：手动记录(action_record 表) 优先，历史快照(action_history) 兜底展示
+// 格子可直接编辑，修改后防抖自动保存，也可手动点“保存修改”
+const RECORD_ROLES = ['SERVANT', 'MASTER']
+// 行动类别建议（对齐 Excel 行动表底部图例 + 当前系统的行动顺序分类）
+const recordSuggestions = [
+  '机动', '魂食', '干涉', '介入', '解放', '制造', '结界', '信息', '休整', '摧毁工坊',
+  '补魔', '广泛侦查', '调查', '待机', '礼装制作', '工坊建筑', '结阵', '退场',
+]
+const recordCategoryLegend = ['机动', '魂食', '干涉', '介入', '解放', '制造', '结界', '信息', '休整', '摧毁工坊']
+const recordDatalistId = 'action-record-suggestions'
+
+const actionRecordMap = ref({})          // key: `${day}|${period}|${cls}|${role}` → 手动内容
+const recordDirtyKeys = ref(new Set())   // 待保存的 key（ref 包裹后 size 可被响应式追踪）
+const recordSaveState = ref('idle')      // idle | dirty | saving | saved | error
+const recordLastSavedAt = ref('')
+let recordSaveTimer = null
+
+const recordDirtyCount = computed(() => recordDirtyKeys.value.size)
+const recordSaveStateText = computed(() => {
+  switch (recordSaveState.value) {
+    case 'saving': return '保存中…'
+    case 'saved': return `已保存 ${recordLastSavedAt.value}`
+    case 'error': return '保存失败，点击“保存修改”重试'
+    case 'dirty': return `有未保存修改（${recordDirtyKeys.value.size}）`
+    default: return '编辑后自动保存'
+  }
+})
+
+// 行索引(0=跳伞, 1=第1天昼, 2=第1天夜, ...) → { day, period }
+function rowIndexToDayPeriod(ri) {
+  if (ri === 0) return { day: 0, period: 'JUMP' }
+  const n = ri + 1 // 对应回合号
+  return { day: Math.floor(n / 2), period: n % 2 === 0 ? 'DAY' : 'NIGHT' }
+}
+
+function recordCellKey(ri, ci, role) {
+  const { day, period } = rowIndexToDayPeriod(ri)
+  return `${day}|${period}|${actionRecordHeaderClasses[ci]}|${role}`
+}
+
+// 展示值：手动记录优先，否则回退到历史快照
+function getRecordCell(ri, ci, role) {
+  const key = recordCellKey(ri, ci, role)
+  const manual = actionRecordMap.value[key]
+  if (manual && String(manual).trim() !== '') return manual
+  return role === 'SERVANT'
+    ? getHistoryServantForRound(ri + 1, ci)
+    : getHistoryMasterForRound(ri + 1, ci)
+}
+
+function onRecordInput(ri, ci, role, event) {
+  const key = recordCellKey(ri, ci, role)
+  const val = String(event.target.value || '')
+  if (val === '') delete actionRecordMap.value[key]
+  else actionRecordMap.value[key] = val
+  recordDirtyKeys.value.add(key)
+  recordSaveState.value = 'dirty'
+  scheduleRecordSave()
+}
+
+function scheduleRecordSave() {
+  if (recordSaveTimer) clearTimeout(recordSaveTimer)
+  recordSaveTimer = setTimeout(flushRecordSave, 2000)
+}
+
+// 批量保存所有脏格子；内容为空的格子由后端删除（显示回退到历史快照）
+async function flushRecordSave() {
+  if (recordSaveTimer) { clearTimeout(recordSaveTimer); recordSaveTimer = null }
+  if (!campaignId.value) return
+  if (recordDirtyKeys.value.size === 0) {
+    if (recordSaveState.value === 'dirty') recordSaveState.value = 'idle'
+    return
+  }
+  recordSaveState.value = 'saving'
+  const records = []
+  for (const key of recordDirtyKeys.value) {
+    const [dayStr, period, cls, role] = key.split('|')
+    records.push({
+      day: Number(dayStr),
+      period,
+      servantClass: cls,
+      role,
+      content: actionRecordMap.value[key] || '',
+    })
+  }
+  try {
+    const res = await saveActionRecords(campaignId.value, records)
+    recordDirtyKeys.value.clear()
+    recordLastSavedAt.value = new Date().toLocaleTimeString()
+    // 用后端返回的权威数据重建 map（空内容已被删除，回退历史快照展示）
+    const map = {}
+    ;(res.records || []).forEach(r => {
+      map[`${r.day}|${r.period}|${r.servantClass}|${r.role}`] = r.content
+    })
+    actionRecordMap.value = map
+    recordSaveState.value = 'saved'
+    setTimeout(() => { if (recordSaveState.value === 'saved') recordSaveState.value = 'idle' }, 3000)
+  } catch (err) {
+    console.error('保存行动记录失败:', err)
+    recordSaveState.value = 'error'
+    setTimeout(() => { if (recordSaveState.value === 'error') recordSaveState.value = 'dirty' }, 5000)
+  }
+}
+
+async function loadActionRecords() {
+  if (!campaignId.value) {
+    actionRecordMap.value = {}
+    recordDirtyKeys.value.clear()
+    recordSaveState.value = 'idle'
+    return
+  }
+  try {
+    const res = await listActionRecords(campaignId.value)
+    const map = {}
+    ;(res || []).forEach(r => {
+      map[`${r.day}|${r.period}|${r.servantClass}|${r.role}`] = r.content
+    })
+    actionRecordMap.value = map
+    recordDirtyKeys.value.clear()
+    recordSaveState.value = 'idle'
+  } catch (err) {
+    console.error('加载行动记录失败:', err)
+    actionRecordMap.value = {}
+  }
+}
+
+// 把当前回合已提交的从者/御主行动填入对应格子（只填空白格，不覆盖手动内容）
+function syncCurrentRoundToRecord() {
+  const n = Number(currentTurn.value)
+  if (!n || n < 1) { alert('当前没有回合') ; return }
+  const ri = n - 1
+  if (ri < 0 || ri >= actionRecordRowLabels.length) { alert('回合超出行动记录范围') ; return }
+  const { day, period } = rowIndexToDayPeriod(ri)
+  let filled = 0
+  RECORD_ROLES.forEach(role => {
+    const arr = role === 'SERVANT' ? servantActions.value : masterActions.value
+    if (!Array.isArray(arr)) return
+    arr.forEach((content, ci) => {
+      if (!content || !String(content).trim()) return
+      const cls = actionRecordHeaderClasses[ci]
+      if (!cls) return
+      const key = `${day}|${period}|${cls}|${role}`
+      const existing = actionRecordMap.value[key]
+      if (existing && String(existing).trim() !== '') return // 不覆盖手动内容
+      actionRecordMap.value[key] = String(content).trim()
+      recordDirtyKeys.value.add(key)
+      filled++
+    })
+  })
+  if (filled > 0) {
+    recordSaveState.value = 'dirty'
+    scheduleRecordSave()
+    alert(`已把当前回合 ${filled} 条提交填入行动记录，正在自动保存`)
+  } else {
+    alert('当前回合没有可同步的提交，或对应格子已有手动内容')
+  }
+}
 
 function getHistoryCellForRound(roundNumber, slotIndex) {
   const r = historyActions.value.find(h => Number(h.roundNumber) === Number(roundNumber))
@@ -724,24 +965,47 @@ function getHistoryCellForRound(roundNumber, slotIndex) {
 
 function getHistoryServantForRound(roundNumber, slotIndex) {
   const r = historyActions.value.find(h => Number(h.roundNumber) === Number(roundNumber))
-  if (!r) {
-    return Number(roundNumber) <= Number(currentTurn.value) ? '待机' : ''
-  }
-  if (Array.isArray(r.servantActions)) {
-    const v = r.servantActions[slotIndex]
-    if (v && String(v).trim()) return v
+  if (r) {
+    // 优先读 servantActions（每次关闭时按槽位保存的完整内容）
+    if (Array.isArray(r.servantActions)) {
+      const v = r.servantActions[slotIndex]
+      if (v && String(v).trim()) return v
+    }
+    // 兜底：从 actionOrder 分类中聚合
+    if (Array.isArray(r.actionOrder) && r.actionOrder.length > 0) {
+      const parts = []
+      r.actionOrder.forEach(cat => {
+        if (cat && Array.isArray(cat.actions)) {
+          const v = cat.actions[slotIndex]
+          if (v && String(v).trim() && v !== '待机') parts.push(v)
+        }
+      })
+      if (parts.length > 0) return parts.join(' / ')
+    }
+    return '待机'
   }
   return Number(roundNumber) <= Number(currentTurn.value) ? '待机' : ''
 }
 
 function getHistoryMasterForRound(roundNumber, slotIndex) {
   const r = historyActions.value.find(h => Number(h.roundNumber) === Number(roundNumber))
-  if (!r) {
-    return Number(roundNumber) <= Number(currentTurn.value) ? '待机' : ''
-  }
-  if (Array.isArray(r.masterActions)) {
-    const v = r.masterActions[slotIndex]
-    if (v && String(v).trim()) return v
+  if (r) {
+    // 优先读 masterActions
+    if (Array.isArray(r.masterActions)) {
+      const v = r.masterActions[slotIndex]
+      if (v && String(v).trim()) return v
+    }
+    if (Array.isArray(r.actionOrder) && r.actionOrder.length > 0) {
+      const parts = []
+      r.actionOrder.forEach(cat => {
+        if (cat && Array.isArray(cat.actions)) {
+          const v = cat.actions[slotIndex]
+          if (v && String(v).trim() && v !== '待机') parts.push(v)
+        }
+      })
+      if (parts.length > 0) return parts.join(' / ')
+    }
+    return '待机'
   }
   return Number(roundNumber) <= Number(currentTurn.value) ? '待机' : ''
 }
@@ -757,7 +1021,7 @@ async function loadLeylineAssignments() {
     (res || []).forEach(a => {
       const card = characterCards.value.find(c => c.id === a.characterCardId)
       if (!card) return
-      const cls = normalizeClassName(card.className)
+      const cls = getSlotClassForCard(card)
       const idx = roundInfo.value.classes.indexOf(cls)
       if (idx === -1) return
       if (card.cardType === 'SERVANT') {
@@ -854,14 +1118,14 @@ function findSlotIndexFromServantClass(servantClass) {
   // 2) try to match by className substring on loaded characterCards
   for (let i = 0; i < roundInfo.value.classes.length; i++) {
     const cls = roundInfo.value.classes[i]
-    const card = characterCards.value.find(c => normalizeClassName(c.className) === cls && String(c.className || '').toLowerCase().includes(text))
+    const card = characterCards.value.find(c => getSlotClassForCard(c) === cls && String(c.className || '').toLowerCase().includes(text))
     if (card) return i
   }
   // 3) try to match by code (exact)
   for (let i = 0; i < roundInfo.value.classes.length; i++) {
     const card = characterCards.value.find(c => String(c.code || '').toLowerCase() === text)
     if (card) {
-      const cls = normalizeClassName(card.className)
+      const cls = getSlotClassForCard(card)
       const idx2 = roundInfo.value.classes.indexOf(cls)
       if (idx2 !== -1) return idx2
     }
@@ -877,7 +1141,7 @@ async function assignCharacterToLeyline(slotIndex, type) {
   const leyId = type === 'SERVANT' ? servantLeylineIds.value[slotIndex] : masterLeylineIds.value[slotIndex]
   // 找到对应角色卡
   const cls = roundInfo.value.classes[slotIndex]
-  const card = characterCards.value.find(c => c.cardType === type && normalizeClassName(c.className) === cls)
+  const card = characterCards.value.find(c => c.cardType === type && getSlotClassForCard(c) === cls)
   if (!card) {
     alert('未找到对应的角色卡，无法保存指派。请先上传该战役的角色卡。')
     return
@@ -892,7 +1156,7 @@ async function assignCharacterToLeyline(slotIndex, type) {
 
 function getCardBySlot(slotIndex, type) {
   const cls = roundInfo.value.classes[slotIndex]
-  return characterCards.value.find(c => c.cardType === type && normalizeClassName(c.className) === cls)
+  return characterCards.value.find(c => c.cardType === type && getSlotClassForCard(c) === cls)
 }
 
 function getSubmissionsOnLeyline(leyId) {
@@ -927,7 +1191,7 @@ async function saveAllAssignments() {
       if (servantCard) {
         items.push({ characterCardId: servantCard.id, leylineId: servantLeylineIds.value[idx] ?? null })
       }
-      const masterCard = characterCards.value.find(c => c.cardType === 'MASTER' && normalizeClassName(c.className) === cls)
+      const masterCard = characterCards.value.find(c => c.cardType === 'MASTER' && getSlotClassForCard(c) === cls)
       if (masterCard) {
         items.push({ characterCardId: masterCard.id, leylineId: masterLeylineIds.value[idx] ?? null })
       }
@@ -939,7 +1203,7 @@ async function saveAllAssignments() {
       items.forEach(it => {
         const card = characterCards.value.find(c => c.id === it.characterCardId)
         if (!card) return
-        const cls = normalizeClassName(card.className)
+        const cls = getSlotClassForCard(card)
         const idx = roundInfo.value.classes.indexOf(cls)
         if (idx === -1) return
         if (card.cardType === 'SERVANT') {
@@ -968,7 +1232,7 @@ async function retireCharacter(slotIndex, type) {
     return
   }
   const cls = roundInfo.value.classes[slotIndex]
-  const card = characterCards.value.find(c => c.cardType === type && normalizeClassName(c.className) === cls)
+  const card = characterCards.value.find(c => c.cardType === type && getSlotClassForCard(c) === cls)
   if (!card) {
     alert('未找到对应的角色卡，无法退场。')
     return
@@ -1009,7 +1273,7 @@ async function resummonCharacter(slotIndex, type) {
     return
   }
   const cls = roundInfo.value.classes[slotIndex]
-  const card = characterCards.value.find(c => c.cardType === type && normalizeClassName(c.className) === cls)
+  const card = characterCards.value.find(c => c.cardType === type && getSlotClassForCard(c) === cls)
   if (!card) {
     alert('未找到对应的角色卡，无法返场。')
     return
@@ -1049,7 +1313,7 @@ async function updateCharacterMana(slotIndex, type, newValue, immediate = false)
   }
 
   const cls = roundInfo.value.classes[slotIndex]
-  const card = characterCards.value.find(c => c.cardType === type && normalizeClassName(c.className) === cls)
+  const card = characterCards.value.find(c => c.cardType === type && getSlotClassForCard(c) === cls)
   if (!card) {
     console.warn('未找到对应的角色卡，无法更新状态')
     return
@@ -1198,7 +1462,7 @@ async function updateCommandSeals(slotIndex, newValue, immediate = false) {
   }
 
   const cls = roundInfo.value.classes[slotIndex]
-  const card = characterCards.value.find(c => c.cardType === 'MASTER' && normalizeClassName(c.className) === cls)
+  const card = characterCards.value.find(c => c.cardType === 'MASTER' && getSlotClassForCard(c) === cls)
   if (!card) {
     console.warn('未找到对应的御主角色卡，无法更新令咒')
     return
@@ -1299,7 +1563,7 @@ async function updateStatusEffects(slotIndex, newEffects, immediate = false) {
 
   const cls = roundInfo.value.classes[slotIndex]
   const card = characterCards.value.find(c =>
-    normalizeClassName(c.className) === cls &&
+    getSlotClassForCard(c) === cls &&
     (c.cardType === 'SERVANT' || c.cardType === 'MASTER')
   )
   if (!card) {
@@ -1419,6 +1683,7 @@ async function closeActions() {
       masterActions: JSON.parse(JSON.stringify(masterActions.value || [])),
     }
     const res = await closeCurrentRound(campaignId.value, payload)
+    // 关闭后不自动推进回合；介入等特殊行动在结算前处理，处理完再点"进入下一回合"
     // refresh persisted history from server
     try {
       const history = await listRoundHistory(campaignId.value)
@@ -1426,17 +1691,17 @@ async function closeActions() {
     } catch (e) {
       console.error('刷新历史记录失败', e)
     }
-    // clear current displayed submissions and action order for next round
+    // 清空当前展示的行动（已锁定保存到历史）
     servantActions.value = new Array(roundInfo.value.classes.length).fill(null)
     masterActions.value = new Array(roundInfo.value.classes.length).fill(null)
     resetActionOrderActions()
-    alert('已关闭当前回合的行动提交；历史记录已保存')
+    alert(`已关闭第 ${currentTurn.value} 回合行动提交；请结算（含介入）后点击"进入下一回合"`)
   } catch (err) {
     alert('关闭失败: ' + err.message)
   }
 }
 
-// 进入下一回合
+// 进入下一回合（结算完成后推进；介入等特殊行动在关闭后、推进前处理）
 async function nextTurn() {
   if (currentTurn.value >= totalTurns.value) {
     alert('战役已结束')
@@ -1500,7 +1765,11 @@ onBeforeUnmount(() => {
     }
   }
   autoSaveStates.clear()
-  // no-op: using manual refresh for submissions
+  // 行动记录：离开页面时若有未保存修改，尽力提交一次
+  if (recordSaveTimer) { clearTimeout(recordSaveTimer); recordSaveTimer = null }
+  if (recordDirtyKeys.value.size > 0 && campaignId.value) {
+    try { flushRecordSave() } catch (e) { /* 离开页面时的尽力保存，失败不阻塞 */ }
+  }
 })
 </script>
 
@@ -1642,6 +1911,59 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </div>
+
+      <!-- QQ 群绑定 -->
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">QQ 群绑定</h2>
+          <div class="card-actions">
+            <button class="btn btn-secondary btn-sm" :disabled="qqBindingsLoading" @click="loadQqBindings">
+              {{ qqBindingsLoading ? '刷新中...' : '刷新' }}
+            </button>
+          </div>
+        </div>
+        <div class="card-body">
+          <p class="text-sm text-secondary" style="margin-bottom: 0.75rem">
+            在 QQ 群里发送 <code>.绑定战役 &lt;战役ID&gt;</code> 即可把群绑定到当前战役，绑定成功后这里会显示。
+          </p>
+          <div v-if="qqBindingsLoading" class="loading">加载绑定中...</div>
+          <div v-else-if="qqBindingsError" class="empty-state">
+            {{ qqBindingsError }}
+          </div>
+          <div v-else-if="qqBindings.length === 0" class="empty-state">
+            当前还没有群绑定到战役{{ campaignId ? ' ' + campaignId : '' }}。<br />
+            <span class="text-sm">请先在 QQ 群里使用 <code>.绑定战役 {{ campaignId || '<战役ID>' }}</code> 指令。</span>
+          </div>
+          <div v-else class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>平台</th>
+                  <th>群名称</th>
+                  <th>群号</th>
+                  <th>更新时间</th>
+                  <th class="text-right">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="binding in qqBindings" :key="binding.id">
+                  <td>
+                    <span class="binding-platform">{{ formatPlatformName(binding.platform) }}</span>
+                  </td>
+                  <td class="font-medium">{{ binding.groupName || '（未命名群）' }}</td>
+                  <td class="text-secondary">{{ binding.guildId }}</td>
+                  <td class="text-secondary">
+                    {{ binding.updatedAt ? new Date(binding.updatedAt).toLocaleString('zh-CN') : '-' }}
+                  </td>
+                  <td class="text-right">
+                    <button class="btn btn-sm btn-danger" @click="handleDeleteBinding(binding)">解绑</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- 战斗控制部分（仅在有选择战役时显示） -->
@@ -1672,6 +1994,7 @@ onBeforeUnmount(() => {
           <div class="control-actions">
             <button class="btn btn-warning" @click="closeActions">关闭行动提交</button>
             <button class="btn btn-primary" @click="nextTurn">进入下一回合</button>
+            <span class="text-sm text-secondary">（关闭锁定本轮行动，介入等结算后再进下一回合）</span>
           </div>
         </div>
       </section>
@@ -2096,9 +2419,18 @@ onBeforeUnmount(() => {
         </div>
       </div>
     
-    <!-- 固定行动记录表（跳伞 + 第1~14天昼夜） -->
+    <!-- 行动记录表（跳伞 + 第1~14天昼夜）· 可编辑工作流：手动记录优先，历史快照兜底 -->
     <div class="table-container" style="margin-top:1rem;">
-      <h2>行动记录</h2>
+      <div class="record-toolbar">
+        <h2 style="margin:0;">行动记录</h2>
+        <span class="record-save-state" :class="recordSaveState">{{ recordSaveStateText }}</span>
+        <button class="btn btn-secondary" @click="flushRecordSave" :disabled="recordSaveState === 'saving' || recordDirtyCount === 0">
+          保存修改<template v-if="recordDirtyCount">（{{ recordDirtyCount }}）</template>
+        </button>
+        <button class="btn btn-secondary" @click="syncCurrentRoundToRecord" title="把当前回合已提交的从者/御主行动填入对应格子（只填空白格，不覆盖手动内容）">
+          同步当前回合并入记录
+        </button>
+      </div>
       <div class="table-wrapper">
         <table class="holy-grail-table">
           <thead>
@@ -2112,21 +2444,39 @@ onBeforeUnmount(() => {
               <tr :class="{ 'current-round-row': (ri + 1) === currentTurn }">
                 <td :rowspan="2" style="text-align:left;vertical-align:middle;">{{ label }}</td>
                 <td v-for="(hc, ci) in actionRecordHeaderClasses" :key="`rec-${ri}-s-${ci}`" class="servant-record-row">
-                  <div class="record-cell-servant">{{ getHistoryServantForRound(ri + 1, ci) || '-' }}</div>
+                  <input
+                    class="record-input record-input-servant"
+                    type="text"
+                    :list="recordDatalistId"
+                    :value="getRecordCell(ri, ci, 'SERVANT')"
+                    @input="onRecordInput(ri, ci, 'SERVANT', $event)"
+                  />
                 </td>
               </tr>
               <tr :class="{ 'current-round-row': (ri + 1) === currentTurn }">
                 <td v-for="(hc, ci) in actionRecordHeaderClasses" :key="`rec-${ri}-m-${ci}`" class="master-record-row">
-                  <div class="record-cell-master">{{ getHistoryMasterForRound(ri + 1, ci) || '-' }}</div>
+                  <input
+                    class="record-input record-input-master"
+                    type="text"
+                    :list="recordDatalistId"
+                    :value="getRecordCell(ri, ci, 'MASTER')"
+                    @input="onRecordInput(ri, ci, 'MASTER', $event)"
+                  />
                 </td>
               </tr>
             </template>
           </tbody>
         </table>
       </div>
+      <div class="record-legend">
+        <span style="font-weight:600;">类别：</span>
+        <span v-for="c in recordCategoryLegend" :key="c" class="legend-tag">{{ c }}</span>
+        <span style="margin-left:0.75rem;color:var(--color-text-secondary);font-size:0.8rem;">灰色文本为历史快照内容，可直接在格子里编辑覆盖；空白格输入后自动保存</span>
+      </div>
     </div>
-    
-    
+    <datalist :id="recordDatalistId">
+      <option v-for="s in recordSuggestions" :key="s" :value="s"></option>
+    </datalist>
     </div>
     <div v-else class="no-campaign-hint">
       <p>请先选择一个战役或创建新战役</p>
@@ -2464,6 +2814,22 @@ tr.active-campaign {
   text-align: center;
   padding: 2rem;
   color: var(--color-text-secondary);
+}
+
+.binding-platform {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  border-radius: 0.375rem;
+  background: rgba(102, 126, 234, 0.12);
+  color: #667eea;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.card-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
 }
 
 .dialog-overlay {
@@ -3055,5 +3421,62 @@ textarea.form-input {
     padding: 0.5rem;
     font-size: 0.75rem;
   }
+}
+
+/* ===== 行动记录可编辑工作流 ===== */
+.record-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.6rem;
+}
+
+.record-save-state {
+  font-size: 0.85rem;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  background: #e5e7eb;
+  color: #374151;
+}
+.record-save-state.saving { background: #fef3c7; color: #92400e; }
+.record-save-state.saved  { background: #dcfce7; color: #166534; }
+.record-save-state.error  { background: #fee2e2; color: #991b1b; }
+.record-save-state.dirty  { background: #dbeafe; color: #1e40af; }
+
+.record-input {
+  width: 100%;
+  min-width: 90px;
+  box-sizing: border-box;
+  border: 1px dashed transparent;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 0.85rem;
+  background: transparent;
+  color: inherit;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+.record-input:hover { border-color: #cbd5e1; }
+.record-input:focus {
+  outline: none;
+  border-color: #6090d0;
+  background: #fff;
+  box-shadow: 0 0 0 2px rgba(96, 144, 208, 0.15);
+}
+
+.record-legend {
+  margin-top: 0.5rem;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.legend-tag {
+  font-size: 0.78rem;
+  padding: 0.1rem 0.5rem;
+  border: 1px solid var(--color-border, #d1d5db);
+  border-radius: 999px;
+  background: #f9fafb;
+  color: #4b5563;
 }
 </style>

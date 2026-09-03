@@ -30,7 +30,7 @@ router.post('/next', (req, res) => {
   res.json({ round: formatRound(round) });
 });
 
-// 关闭当前回合
+// 关闭当前回合（只关闭锁定，不自动创建下一回合；由"进入下一回合"按钮推进）
 router.post('/close-current', (req, res) => {
   const db = getDb();
   const campaignId = parseRequiredId(req.query.campaignId, 'campaignId', res);
@@ -77,7 +77,19 @@ router.get('/history', (req, res) => {
   const rows = db.prepare(
     'SELECT * FROM action_history WHERE campaign_id = ? ORDER BY round_number DESC'
   ).all(campaignId);
-  res.json(rows);
+
+  // 转成前端期望的驼峰字段（servantActions / masterActions / roundNumber / actionOrder）
+  const out = rows.map(r => ({
+    id: r.id,
+    campaignId: r.campaign_id,
+    roundNumber: r.round_number,
+    closedAt: r.closed_at,
+    actionOrder: r.action_order ? JSON.parse(r.action_order) : null,
+    servantActions: r.servant_actions ? JSON.parse(r.servant_actions) : null,
+    masterActions: r.master_actions ? JSON.parse(r.master_actions) : null,
+    createdAt: r.created_at,
+  }));
+  res.json(out);
 });
 
 function createNextRound(db, campaignId) {

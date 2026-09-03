@@ -13,17 +13,37 @@ router.get('/', (req, res) => {
     'SELECT * FROM leyline WHERE campaign_id = ? ORDER BY id ASC'
   ).all(campaignId);
 
-  const out = rows.map(row => ({
-    id: row.id,
-    campaignId: row.campaign_id,
-    name: row.name,
-    effect: row.effect,
-    description: row.description,
-    manaAmount: row.mana_amount,
-    battlefieldWidth: row.battlefield_width,
-    populationFlow: row.population_flow,
-    assignedCharacterIds: parseJson(row.assigned_character_ids, []),
-  }));
+  // 从 leyline_assignment 表读取真实指派，合并到 assignedCharacterIds
+  // （行动提交自动指派写 assignment 表；这里保证网页端/灵脉一览显示一致）
+  const assignRows = db.prepare(
+    'SELECT leyline_id, character_card_id FROM leyline_assignment WHERE campaign_id = ?'
+  ).all(campaignId);
+  const assignMap = new Map();
+  for (const a of assignRows) {
+    if (!assignMap.has(a.leyline_id)) assignMap.set(a.leyline_id, []);
+    assignMap.get(a.leyline_id).push(a.character_card_id);
+  }
+
+  const out = rows.map(row => {
+    const fromJson = parseJson(row.assigned_character_ids, []);
+    const fromAssign = assignMap.get(row.id) || [];
+    // 合并去重
+    const merged = [...fromJson];
+    for (const cid of fromAssign) {
+      if (!merged.includes(cid)) merged.push(cid);
+    }
+    return {
+      id: row.id,
+      campaignId: row.campaign_id,
+      name: row.name,
+      effect: row.effect,
+      description: row.description,
+      manaAmount: row.mana_amount,
+      battlefieldWidth: row.battlefield_width,
+      populationFlow: row.population_flow,
+      assignedCharacterIds: merged,
+    };
+  });
 
   res.json(out);
 });

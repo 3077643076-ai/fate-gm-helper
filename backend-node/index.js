@@ -10,6 +10,7 @@ const leylines = require('./routes/leylines');
 const leylineAssignments = require('./routes/leylineAssignments');
 const characterStatus = require('./routes/characterStatus');
 const actionSubmissions = require('./routes/actionSubmissions');
+const actionRecords = require('./routes/actionRecords');
 const skillTemplates = require('./routes/skillTemplates');
 const qqBindings = require('./routes/qqBindings');
 const kb = require('./routes/kb');
@@ -59,6 +60,8 @@ app.get('/api', (req, res) => {
       'POST   /api/action-submissions',
       'GET    /api/action-submissions',
       'GET    /api/action-submissions/stream (SSE)',
+      'GET    /api/action-records',
+      'PUT    /api/action-records',
       'GET    /api/skill-templates',
       'POST   /api/skill-templates',
       'GET    /api/skill-templates/:id',
@@ -66,6 +69,8 @@ app.get('/api', (req, res) => {
       'DELETE /api/skill-templates/:id',
       'GET    /api/qq-bindings',
       'POST   /api/qq-bindings',
+      'GET    /api/qq-bindings/campaign/:campaignId',
+      'DELETE /api/qq-bindings/:id',
       'GET    /api/kb/status',
       'POST   /api/kb/rebuild',
       'GET    /api/kb/search',
@@ -83,6 +88,7 @@ app.use('/api/leylines', leylines);
 app.use('/api/leyline-assignments', leylineAssignments);
 app.use('/api/character-status', characterStatus);
 app.use('/api/action-submissions', actionSubmissions);
+app.use('/api/action-records', actionRecords);
 app.use('/api/skill-templates', skillTemplates);
 app.use('/api/qq-bindings', qqBindings);
 app.use('/api/kb', kb);

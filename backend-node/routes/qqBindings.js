@@ -23,6 +23,36 @@ router.get('/', (req, res) => {
   res.json(formatBinding(row));
 });
 
+// 按战役查询所有绑定群（网页端展示用）
+router.get('/campaign/:campaignId', (req, res) => {
+  const db = getDb();
+  const parsedCampaignId = parseRequiredId(req.params.campaignId, 'campaignId', res);
+  if (parsedCampaignId === null) return;
+
+  const rows = db.prepare(`
+    SELECT b.*, c.name AS campaign_name
+    FROM qq_group_binding b
+    LEFT JOIN campaign c ON c.id = b.campaign_id
+    WHERE b.campaign_id = ?
+    ORDER BY b.updated_at DESC
+  `).all(parsedCampaignId);
+
+  res.json(rows.map(formatBinding));
+});
+
+// 删除（解绑）一条绑定
+router.delete('/:id', (req, res) => {
+  const db = getDb();
+  const parsedId = parseRequiredId(req.params.id, 'id', res);
+  if (parsedId === null) return;
+
+  const info = db.prepare('DELETE FROM qq_group_binding WHERE id = ?').run(parsedId);
+  if (info.changes === 0) {
+    return res.status(404).json({ error: '未找到该绑定记录' });
+  }
+  res.json({ ok: true, deletedId: parsedId });
+});
+
 router.post('/', (req, res) => {
   const db = getDb();
   const { platform, guildId, campaignId, groupName } = req.body || {};

@@ -47,16 +47,48 @@ start-desktop.bat
 如果只想启动服务，然后自己打开浏览器，也可以双击：
 
 ```text
-start-local.bat
+start-all.bat    （一键后台启动：NapCat + Koishi + 后端 + 前端）
+start-local.bat  （仅启动本地后端服务）
 ```
 
-脚本会先构建前端，再启动轻量后端。启动后访问：
+脚本会按顺序启动 NapCat（OneBot 服务）、Koishi（QQ 机器人）、后端（backend-node），并打开浏览器。**所有服务静默后台运行，不弹终端窗口，日志统一写入 `logs/` 目录**。启动后访问：
 
 ```text
 http://localhost:8100
 ```
 
 这个项目按本地/私有工具设计，不需要挂公网。
+
+一键启动脚本会自动完成：
+1. 生成 NapCat 的 onebot11 配置（正向 WebSocket `ws://127.0.0.1:3001`，不设 token）；
+2. 校验 `my-koishi-bot/koishi.yml`（需已配置 adapter-onebot 连接 NapCat）；
+3. 以管理员权限启动 NapCat（首次会弹 UAC，并在 QQ 窗口扫码登录）；
+4. 等待 NapCat 就绪后启动 Koishi（dev 模式，因 fate-actions 插件是 TS 源码）；
+5. 启动后端并打开浏览器。
+
+停止服务（按端口精确停止，不会误伤其他程序）：
+
+```text
+stop-all.bat
+```
+
+日志文件（`logs/` 目录）：`backend.log`、`koishi.log`、`napcat.log`、`build.log`。
+
+> ⚠️ 重要：`my-koishi-bot/koishi.yml` 中 adapter-onebot 前**不要加 `~` 前缀**——Koishi 配置里 `~` 表示"不启用该插件"，会导致机器人不连接 NapCat。
+
+开发模式（Vite 热更新，前端端口 3100）：
+
+```text
+start-all.bat dev
+```
+
+可调配置在 `start-all.ps1` 顶部：NapCat 目录、QQ 号、OneBot 端口、后端/前端端口等。
+
+如果只需要本地后端（不带 NapCat / Koishi）：
+
+```text
+start-local.bat
+```
 
 ### 前端开发模式
 ```bash

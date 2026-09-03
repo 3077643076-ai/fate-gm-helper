@@ -158,6 +158,20 @@ function initSchema(db) {
       created_at TEXT DEFAULT (datetime('now'))
     );
 
+    -- GM 手动行动记录（行动表 Excel 的网页版兜底工作流）
+    -- day: 0=跳伞(降临日), 1..14=第N天; period: JUMP/DAY/NIGHT
+    CREATE TABLE IF NOT EXISTS action_record (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      campaign_id INTEGER NOT NULL REFERENCES campaign(id),
+      day INTEGER NOT NULL,
+      period TEXT NOT NULL,
+      servant_class TEXT NOT NULL,
+      role TEXT NOT NULL,
+      content TEXT NOT NULL DEFAULT '',
+      updated_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(campaign_id, day, period, servant_class, role)
+    );
+
     CREATE TABLE IF NOT EXISTS skill_template (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,

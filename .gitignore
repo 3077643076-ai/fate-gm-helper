@@ -42,8 +42,18 @@ tools/napcat/**/*token*
 tools/napcat/**/*session*
 tools/napcat/**/*device*
 
+# 临时资料：1.15 下规则书 PDF / 模板卡 / 转换脚本不入库；
+# 三国杯的交接说明 md、行动表 xlsx、群聊记录 jsonl、时段状态保留（文本/小体积）
+1.15/*
+!1.15/*.md
+!1.15/三国杯玩家指令总控.xlsx
+!1.15/三国杯玩家指令总控.state.json
+!1.15/群聊记录-三国杯.jsonl
+
+# 运行时日志目录（含 PID 记录）
+logs/
+
 # 临时资料和截图
-1.15/
 battle-sheet-alignment.png
 table1.png
 battle_rule_raw.txt
