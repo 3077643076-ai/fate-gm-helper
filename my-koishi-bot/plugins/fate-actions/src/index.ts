@@ -469,6 +469,25 @@ export function apply(ctx: Context, config: Config) {
       }
     })
 
+  // HTML 实体解码（公告文本带 &#10; / &nbsp; 等转义）
+  function decodeEntities(s: string): string {
+    return String(s || '')
+      .replace(/&#(\d+);/g, (_m, d) => String.fromCharCode(Number(d)))
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .trim()
+  }
+  // 从公告对象里取正文（message 可能是 {text} 对象 / 字符串 / content 字段）
+  function noticeText(n: any): string {
+    const m = n?.message
+    if (m && typeof m === 'object' && m.text != null) return String(m.text)
+    if (typeof m === 'string') return m
+    if (n?.content) return String(n.content)
+    return ''
+  }
+
   // 群公告：读取本群当前公告（玩家习惯用改公告表达下一回合行动）
   ctx.command('群公告', '读取本群当前公告（需协议端支持 _get_group_notice）')
     .action(async ({ session }) => {
@@ -477,13 +496,46 @@ export function apply(ctx: Context, config: Config) {
       if (!bot?.internal?.getGroupNotice) return '当前平台不支持读取群公告。'
       try {
         const notices = await bot.internal.getGroupNotice(session.guildId)
-        if (!Array.isArray(notices) || !notices.length) return '本群当前没有公告。'
-        return notices
-          .map((n: any, i: number) => `${i + 1}. ${n.content || n.text || n.message || JSON.stringify(n)}`)
+        const arr = Array.isArray(notices) ? notices : []
+        if (!arr.length) return '本群当前没有公告。'
+        return arr
+          .map((n: any, i: number) => {
+            const t = decodeEntities(noticeText(n))
+            const d = n.publish_time ? new Date(n.publish_time * 1000).toISOString().slice(0, 16) : ''
+            return `${i + 1}. [${d}] ${t || '(无正文)'}`
+          })
           .join('\n')
       } catch (e: any) {
         const msg = String(e?.response?.data || e?.message || e)
         return `读取群公告失败：${msg}`
+      }
+    })
+
+  // 确认行动：读取本群当前公告并回发一条机器人确认公告（玩家确认行动用）
+  ctx.command('确认行动', '读取本群公告并回发一条「✅ 机器人已确认」公告')
+    .action(async ({ session }) => {
+      if (!session?.guildId) return '本指令需要在群聊中使用。'
+      const bot: any = session.bot
+      if (!bot?.internal?.getGroupNotice || !bot?.internal?.sendGroupNotice) {
+        return '当前平台不支持读取/发布群公告（需要机器人是本群群主/管理员）。'
+      }
+      try {
+        const notices = await bot.internal.getGroupNotice(session.guildId)
+        const arr = Array.isArray(notices) ? notices : []
+        let text = ''
+        for (const n of arr) {
+          text = noticeText(n)
+          if (text) break
+        }
+        if (!text) return '本群当前没有公告内容可确认（先在公告里写好行动再确认）。'
+        const clean = decodeEntities(text)
+        const cst = new Date(Date.now() + 8 * 3600 * 1000).toISOString().replace('T', ' ').slice(5, 16)
+        const confirmText = `✅ 机器人已确认 ${cst}\n${clean}`
+        await bot.internal.sendGroupNotice(session.guildId, confirmText)
+        return `已读取本群公告并回发确认公告 ✅\n${confirmText}`
+      } catch (e: any) {
+        const msg = String(e?.response?.data || e?.message || e)
+        return `确认失败（可能机器人不是本群群主/管理员）：${msg}`
       }
     })
 }
