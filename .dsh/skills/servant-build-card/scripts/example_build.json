@@ -1,0 +1,33 @@
+{
+  "name": "巢群之主（本对话搓的整套系统·本体卡）",
+  "type": "servant",
+  "class": "剑",
+  "budget": 24,
+  "sold_class_skill": { "name": "骑乘", "rp_gain": 2, "note": "剑阶特性：放弃骑乘+10耐久基础属性换2RP，耐久基础已按20计" },
+  "class_skills": [
+    { "name": "对魔力", "rank": "E", "rp": 0, "note": "被魔术类技能打中时该效果-1级" }
+  ],
+  "nps": [
+    { "name": "为狮子圆环奏响十字", "face": "召唤", "rank": "C", "rp": 3,
+      "source": "knowledge/从者扩充包.md 行2288" },
+    { "name": "虚荣的空中庭园", "face": "防御", "rank": "A", "rp": 5,
+      "source": "knowledge/从者扩充包.md 行316" }
+  ],
+  "extra_np_slots": 1,
+  "skills": [
+    { "name": "战斗续行", "face": "技艺", "rank": "B", "rp": 4,
+      "source": "knowledge/从者资源库.md 行227" },
+    { "name": "直感", "face": "天赋", "rank": "C", "rp": 3,
+      "source": "knowledge/从者资源库.md 行160" }
+  ],
+  "extra_skill_slots": 0,
+  "attributes": { "耐久": 40, "敏捷": 30, "幸运": 20 },
+  "cap_overrides": {},
+  "extra_costs": [],
+  "class_base_stats": { "筋力": 20, "耐久": 20, "敏捷": 20, "魔力": 10, "幸运": 0, "宝具": 0 },
+  "gm_questions": [
+    "庭园（额外灵脉）魔力量60是否算狮子环的『降临灵脉魔力量』",
+    "长坂坡『到达灵脉后』的即死是否被庭园泡泡无效",
+    "召唤物等级耗魔×2的具体数值（决定养得起几只）"
+  ]
+}
