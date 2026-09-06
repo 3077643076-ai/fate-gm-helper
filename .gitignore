@@ -42,13 +42,8 @@ tools/napcat/**/*token*
 tools/napcat/**/*session*
 tools/napcat/**/*device*
 
-# 临时资料：1.15 下规则书 PDF / 模板卡 / 转换脚本不入库；
-# 三国杯的交接说明 md、行动表 xlsx、群聊记录 jsonl、时段状态保留（文本/小体积）
-1.15/*
-!1.15/*.md
-!1.15/三国杯玩家指令总控.xlsx
-!1.15/三国杯玩家指令总控.state.json
-!1.15/群聊记录-三国杯.jsonl
+# 三国杯战役数据全部保密（含玩家QQ/真名/主从配对/行动/聊天），不入库，仅本地与U盘备份
+1.15/
 
 # 运行时日志目录（含 PID 记录）
 logs/
@@ -58,3 +53,18 @@ battle-sheet-alignment.png
 table1.png
 battle_rule_raw.txt
 rule.txt
+
+# dsh 远程访问私钥（绝不入库）
+docs/dsh-remote-access/dsh_remote_key
+docs/dsh-remote-access/*.key
+
+# 战役专属 / 保密内容（含群号 / QQ / 真名 / dsh对话），只留本地与U盘，不上库
+会话记录-dsh/
+.dsh/skills/
+docs/dsh-remote-access/
+判例.md
+新三杯*.md
+截图/
+my-koishi-bot/plugins/fate-actions/
+tools/napcat/
+
