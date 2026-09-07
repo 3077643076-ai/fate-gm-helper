@@ -13,16 +13,17 @@ function normalizeByAlias(db, text) {
   return row ?? null
 }
 
-/** 目标灵脉归一：支持"灵脉-B"/"B脉"/直接灵脉名 */
-function normalizeLeyline(db, text) {
+/** 目标灵脉归一：支持"灵脉-B"/"B脉"/直接灵脉名（战役无关，campaignId 由调用方传入） */
+function normalizeLeyline(db, text, campaignId) {
   if (!text) return null
   const t = String(text).trim()
+  if (!campaignId) throw new Error('normalizeLeyline 需要 campaignId')
   // 直接命中灵脉名（或去掉"灵脉-"前缀后命中）
   const bare = t.replace(/^灵脉[-—]?/, '')
-  const row = db.prepare(`SELECT name FROM leyline WHERE campaign_id = 999002 AND (name = ? OR name = ?)`).get(t, bare)
+  const row = db.prepare(`SELECT name FROM leyline WHERE campaign_id = ? AND (name = ? OR name = ?)`).get(campaignId, t, bare)
   if (row) return row.name
   // 简称：单字/短词 LIKE（如 "B" → 灵脉-B 类命名；三国杯灵脉是中文名，此规则兜底）
-  const like = db.prepare(`SELECT name FROM leyline WHERE campaign_id = 999002 AND name LIKE ? LIMIT 2`).all(`%${bare}%`)
+  const like = db.prepare(`SELECT name FROM leyline WHERE campaign_id = ? AND name LIKE ? LIMIT 2`).all(campaignId, `%${bare}%`)
   if (like.length === 1) return like[0].name
   if (like.length > 1) return { ambiguous: like.map(l => l.name) }
   return null
@@ -88,7 +89,7 @@ export function parseAction(db, rawText, opts = {}) {
   if (targetToken) {
     const aliasTarget = normalizeByAlias(db, targetToken)
     if (aliasTarget) target = aliasTarget.canonical
-    const ley = normalizeLeyline(db, target)
+    const ley = normalizeLeyline(db, target, opts.campaignId)
     if (ley) target = typeof ley === 'string' ? ley : null
     if (ley && typeof ley !== 'string') targetNote = `目标歧义：${ley.ambiguous.join('/')}`
   }

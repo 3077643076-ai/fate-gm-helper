@@ -13,6 +13,13 @@ const db = openEngineDb(dbPath)
 
 const router = Router()
 
+/** campaignId 必传校验（引擎是多战役通用的，绝不默认到某个杯） */
+function requireCampaignId(source) {
+  const id = Number(source)
+  if (!Number.isInteger(id) || id <= 0) return null
+  return id
+}
+
 /** 当前时段推断：取最后一个 OPEN 回合的最大轮次（无则 1 昼） */
 function currentRound(campaignId) {
   const row = db.prepare(`SELECT MAX(turn_number) AS n FROM campaign_round WHERE campaign_id = ? AND status = 'OPEN'`).get(campaignId)
@@ -21,7 +28,8 @@ function currentRound(campaignId) {
 
 // ---------- 状态：位置/生效效果/行动/需裁决/判定单一屏 ----------
 router.get('/status', (req, res) => {
-  const campaignId = Number(req.query.campaignId) || 999002
+  const campaignId = requireCampaignId(req.query.campaignId)
+  if (!campaignId) return res.status(400).json({ error: '需要 campaignId（战役 ID）' })
   const round = Number(req.query.round) || currentRound(campaignId)
   const phase = req.query.phase || '昼'
   res.json({
@@ -37,7 +45,8 @@ router.get('/status', (req, res) => {
 
 // ---------- 登记行动：文本 → parser → 入库（解析失败自动进需裁决） ----------
 router.post('/actions', (req, res) => {
-  const { campaignId = 999002, round, phase = '昼', unitKey, text } = req.body ?? {}
+  const { campaignId, round, phase = '昼', unitKey, text } = req.body ?? {}
+  if (!requireCampaignId(campaignId)) return res.status(400).json({ error: '需要 campaignId（战役 ID）' })
   if (!unitKey || !text) return res.status(400).json({ error: '需要 unitKey 和 text' })
   const r = parseAction(db, text, { campaignId, round: round ?? currentRound(campaignId), phase, unitKey })
   if (!r.ok) {
@@ -61,9 +70,17 @@ router.post('/actions', (req, res) => {
   }
 })
 
+// ---------- 移除已登记行动（void 留痕，结算时跳过） ----------
+router.delete('/actions/:id', (req, res) => {
+  const r = db.prepare(`UPDATE engine_actions SET status = 'void' WHERE id = ? AND status IN ('declared','deferred')`).run(req.params.id)
+  if (r.changes === 0) return res.status(404).json({ error: `行动 #${req.params.id} 不存在或已结算` })
+  res.json({ ok: true })
+})
+
 // ---------- 推进：前置检查 → 结算 → 报告 ----------
 router.post('/advance', (req, res) => {
-  const { campaignId = 999002, round, phase = '昼' } = req.body ?? {}
+  const { campaignId, round, phase = '昼' } = req.body ?? {}
+  if (!requireCampaignId(campaignId)) return res.status(400).json({ error: '需要 campaignId（战役 ID）' })
   const result = settleRound(db, campaignId, round ?? currentRound(campaignId), phase)
   const code = result.ok ? 200 : 409
   res.status(code).json(result)
@@ -71,7 +88,8 @@ router.post('/advance', (req, res) => {
 
 // ---------- 需裁决：列表 / 裁决 ----------
 router.get('/rulings', (req, res) => {
-  const campaignId = Number(req.query.campaignId) || 999002
+  const campaignId = requireCampaignId(req.query.campaignId)
+  if (!campaignId) return res.status(400).json({ error: '需要 campaignId（战役 ID）' })
   res.json(db.prepare(`SELECT * FROM engine_pending_ruling WHERE campaign_id = ? AND status = 'open'`).all(campaignId))
 })
 router.post('/rulings/resolve', (req, res) => {

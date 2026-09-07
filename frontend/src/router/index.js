@@ -6,9 +6,11 @@ import CharacterCardUpload from '../views/CharacterCardUpload.vue'
 import SkillRecord from '../views/SkillRecord.vue'
 import SkillTemplateManage from '../views/SkillTemplateManage.vue'
 import RuleAdvisor from '../views/RuleAdvisor.vue'
+import EnginePanel from '../views/EnginePanel.vue'
 
 const routes = [
   { path: '/', name: 'home', component: Home },
+  { path: '/engine', name: 'engine', component: EnginePanel },
   { path: '/battle-control/:campaignId?', name: 'battle-control', component: BattleControl },
   { path: '/battle-sheet', name: 'battle-sheet', component: BattleSheetPage },
   { path: '/battle-sheet/:campaignId', name: 'battle-sheet-page', component: BattleSheetPage },
