@@ -1,0 +1,12 @@
+{
+  "name": "fate-gm-tools",
+  "description": "三国杯带团辅助：查卡/搜规则/记账/结算/判定单工具 + 会话级带团铁律注入。通过 gm_mode 开关工具按会话激活，不影响其他会话。",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "index.mjs",
+  "dsh": {
+    "engines": {
+      "dsh": ">=0.1.2-alpha.1"
+    }
+  }
+}

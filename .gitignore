@@ -68,3 +68,19 @@ docs/dsh-remote-access/
 my-koishi-bot/plugins/fate-actions/
 tools/napcat/
 
+
+# ===== 三国杯运行数据与本地工具（2026-09-07 追加）=====
+# 战役保密内容：玩家卡、全量备份、AI 会话记忆，只留本地
+新三杯子/
+fate-三国杯-备份-*.zip
+.dsh-meow/
+# 卡面 dump / 临时审卡脚本（含卡数据衍生）
+backend-node/_cards/
+backend-node/_dump_*.txt
+backend-node/_unzip_*/
+backend-node/scripts/_dump_*.js
+backend-node/scripts/_parse_unzipped.js
+/scripts/
+search_longfang.py
+# 三国杯数据初始化脚本：内含灵脉规则全文/供魔数据/玩家昵称映射，属战役保密内容
+backend-node/scripts/setup-sanguo.mjs
