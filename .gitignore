@@ -84,3 +84,10 @@ backend-node/scripts/_parse_unzipped.js
 search_longfang.py
 # 三国杯数据初始化脚本：内含灵脉规则全文/供魔数据/玩家昵称映射，属战役保密内容
 backend-node/scripts/setup-sanguo.mjs
+
+# ===== Electron 打包产物与 staging（2026-09-07）=====
+desktop/
+frontend/electron-backend-staging/
+frontend/electron/
+frontend/node_modules/electron/
+frontend/node_modules/electron-builder/
