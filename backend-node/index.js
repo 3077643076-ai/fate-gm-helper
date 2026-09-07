@@ -93,6 +93,21 @@ app.use('/api/skill-templates', skillTemplates);
 app.use('/api/qq-bindings', qqBindings);
 app.use('/api/kb', kb);
 
+// 引擎路由：同步注册占位（必须在 SPA fallback 之前，否则引擎 GET 会被通配吞掉）
+const engineRouter = express.Router();
+app.use('/api/engine', engineRouter);
+
+// 引擎模块为 ESM，动态加载后把真实路由挂到占位 router 上
+(async () => {
+  try {
+    const engine = await import('./engine/router.mjs');
+    engineRouter.use(engine.default);
+    console.log('[engine] /api/engine 路由已挂载');
+  } catch (e) {
+    console.error('[engine] 挂载失败:', e.message);
+  }
+})();
+
 // 托管前端静态文件（生产模式）
 const frontendDist = path.join(__dirname, '..', 'frontend', 'dist');
 app.use(express.static(frontendDist, { index: false }));
