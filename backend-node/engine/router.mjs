@@ -4,6 +4,7 @@ import { Router } from 'express'
 import { openEngineDb } from './store.mjs'
 import { parseAction } from './parser.mjs'
 import { settleRound } from './settler.mjs'
+import { fetchGroupNotices, sendGroupMsg } from './qqport.mjs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
@@ -121,6 +122,81 @@ router.post('/tickets/attach', (req, res) => {
   db.prepare(`UPDATE judgment_ticket SET roll=?, status='attached' WHERE id=?`).run(Math.trunc(Number(roll)), id)
   const verdict = ticket.target != null ? (Math.trunc(Number(roll)) <= ticket.target ? '过' : '未过') : ''
   res.json({ ok: true, verdict })
+})
+
+// ---------- 群映射（私组/灵脉群/公屏/GM 群的配置，分发版各团自己录） ----------
+router.get('/groups', (req, res) => {
+  const campaignId = requireCampaignId(req.query.campaignId)
+  if (!campaignId) return res.status(400).json({ error: '需要 campaignId' })
+  res.json(db.prepare(`SELECT id, group_id, group_name, kind, class, leyline FROM engine_group_binding WHERE campaign_id = ? ORDER BY kind, class`).all(campaignId))
+})
+router.post('/groups', (req, res) => {
+  const { campaignId, group_id, group_name, kind, class: klass, leyline } = req.body ?? {}
+  if (!requireCampaignId(campaignId)) return res.status(400).json({ error: '需要 campaignId' })
+  if (!group_id || !kind) return res.status(400).json({ error: '需要 group_id 和 kind（private/leyline/public/gm）' })
+  const r = db.prepare(
+    `INSERT INTO engine_group_binding (campaign_id, group_id, group_name, kind, class, leyline) VALUES (?,?,?,?,?,?)`
+  ).run(campaignId, String(group_id), group_name ?? '', kind, klass ?? null, leyline ?? null)
+  res.json({ ok: true, id: r.lastInsertRowid })
+})
+router.delete('/groups/:id', (req, res) => {
+  const r = db.prepare(`DELETE FROM engine_group_binding WHERE id = ?`).run(req.params.id)
+  if (r.changes === 0) return res.status(404).json({ error: '群映射不存在' })
+  res.json({ ok: true })
+})
+
+// ---------- 公告检查：一键读取各私组公告，标出未交行动的组 ----------
+// 交了=群里有非空公告（最新一条含"机器人已确认"记为已确认）；没交=无公告或正文为空
+router.post('/notices/check', async (req, res) => {
+  const { campaignId, napcatBase } = req.body ?? {}
+  if (!requireCampaignId(campaignId)) return res.status(400).json({ error: '需要 campaignId' })
+  if (!napcatBase) return res.status(400).json({ error: '需要 napcatBase（NapCat HTTP 地址，如 http://127.0.0.1:3000）' })
+  const groups = db.prepare(`SELECT group_id, group_name, class FROM engine_group_binding WHERE campaign_id = ? AND kind = 'private' ORDER BY class`).all(campaignId)
+  if (!groups.length) return res.status(400).json({ error: '本战役没有登记私组群映射（先在面板配置群映射）' })
+
+  const checked = []
+  const failed = []
+  for (const g of groups) {
+    try {
+      const notices = await fetchGroupNotices(napcatBase, g.group_id)
+      const latest = notices[0] ?? null
+      const text = latest?.text ?? ''
+      checked.push({
+        class: g.class ?? g.group_name ?? g.group_id,
+        groupId: g.group_id,
+        hasNotice: text.length > 0,
+        confirmed: text.includes('机器人已确认'),
+        latestText: text.slice(0, 160),
+        pubTime: latest?.pubTime ?? '',
+      })
+    } catch (e) {
+      failed.push({ class: g.class ?? g.group_id, groupId: g.group_id, error: e.message })
+    }
+  }
+
+  const missing = checked.filter(c => !c.hasNotice).map(c => c.class)
+  res.json({ checked, missing, failed, summary: { total: groups.length, submitted: checked.filter(c => c.hasNotice).length, missing: missing.length, failed: failed.length } })
+})
+
+// ---------- 一键提醒：向未交行动的私组发提醒消息 ----------
+router.post('/notices/remind', async (req, res) => {
+  const { campaignId, napcatBase, groups, round, phase, customText } = req.body ?? {}
+  if (!requireCampaignId(campaignId)) return res.status(400).json({ error: '需要 campaignId' })
+  if (!napcatBase) return res.status(400).json({ error: '需要 napcatBase' })
+  if (!Array.isArray(groups) || !groups.length) return res.status(400).json({ error: '需要 groups（要提醒的群映射列表）' })
+
+  const defaultText = `【行动提醒】第${round ?? '?'}天 ${phase ?? ''}行动提交：请把本组行动写进本群公告，并发 .确认行动 确认。`
+  const sent = []
+  const failed = []
+  for (const g of groups) {
+    try {
+      await sendGroupMsg(napcatBase, g.groupId, customText ?? defaultText)
+      sent.push(g.class ?? g.groupId)
+    } catch (e) {
+      failed.push({ class: g.class ?? g.groupId, error: e.message })
+    }
+  }
+  res.json({ ok: failed.length === 0, sent, failed })
 })
 
 export default router

@@ -183,8 +183,86 @@ const groupedActions = computed(() => {
   return ordered
 })
 
+// ---------- 公告检查（一键读各私组公告，催未交行动） ----------
+const napcatBase = ref(localStorage.getItem('engine-napcat-base') ?? 'http://127.0.0.1:3000')
+const noticeCheck = ref(null)     // { checked, missing, failed, summary }
+const noticeLoading = ref(false)
+const groupBindings = ref([])     // 群映射列表
+const groupForm = ref({ groupId: '', groupName: '', kind: 'private', class: '' })
+
+async function saveNapcatBase() {
+  localStorage.setItem('engine-napcat-base', napcatBase.value)
+}
+
+async function loadGroups() {
+  if (!campaignId.value) return
+  const r = await fetch(`/api/engine/groups?campaignId=${campaignId.value}`)
+  groupBindings.value = await r.json()
+}
+
+async function addGroup() {
+  const g = groupForm.value
+  if (!g.groupId) { log('添加群映射需要群号', 'warn'); return }
+  const r = await fetch('/api/engine/groups', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ campaignId: campaignId.value, ...g }),
+  })
+  if (r.ok) {
+    log(`群映射已添加：${g.groupName || g.groupId}（${g.kind}${g.class ? '/' + g.class : ''}）`, 'ok')
+    groupForm.value = { groupId: '', groupName: '', kind: 'private', class: '' }
+    await loadGroups()
+  } else {
+    log('添加失败：' + (await r.json()).error, 'error')
+  }
+}
+
+async function removeGroup(g) {
+  await fetch(`/api/engine/groups/${g.id}`, { method: 'DELETE' })
+  log(`已删除群映射：${g.group_name || g.group_id}`, 'warn')
+  await loadGroups()
+}
+
+async function checkNotices() {
+  if (!campaignId.value) { log('请先选择战役', 'warn'); return }
+  await saveNapcatBase()
+  noticeLoading.value = true
+  try {
+    const r = await fetch('/api/engine/notices/check', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ campaignId: campaignId.value, napcatBase: napcatBase.value }),
+    })
+    const body = await r.json()
+    if (!r.ok) { log('公告检查失败：' + body.error, 'error'); return }
+    noticeCheck.value = body
+    log(`公告检查完成：${body.summary.submitted}/${body.summary.total} 组已交，${body.summary.missing} 组未交${body.summary.failed ? `，${body.summary.failed} 组读取失败` : ''}`, body.summary.missing || body.summary.failed ? 'warn' : 'ok')
+    for (const c of body.checked) {
+      log(`  ${c.hasNotice ? '✓' : '✗'} ${c.class}${c.confirmed ? '（已确认）' : ''}${c.latestText ? '：' + c.latestText.slice(0, 50) : '（无公告）'}`, c.hasNotice ? 'info' : 'warn')
+    }
+    for (const f of body.failed) log(`  读取失败 ${f.class}: ${f.error}`, 'error')
+  } finally { noticeLoading.value = false }
+}
+
+async function remindMissing() {
+  const missing = (noticeCheck.value?.checked ?? []).filter(c => !c.hasNotice)
+    .map(c => ({ groupId: c.groupId, class: c.class }))
+  if (!missing.length) { log('没有需要提醒的组（都已交公告）', 'info'); return }
+  noticeLoading.value = true
+  try {
+    const r = await fetch('/api/engine/notices/remind', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        campaignId: campaignId.value, napcatBase: napcatBase.value, groups: missing,
+        round: round.value, phase: phase.value,
+      }),
+    })
+    const body = await r.json()
+    log(`提醒已发送：${(body.sent ?? []).join('、') || '无'}${(body.failed ?? []).length ? `（失败 ${(body.failed ?? []).length}）` : ''}`, body.ok ? 'ok' : 'warn')
+  } finally { noticeLoading.value = false }
+}
+
 onMounted(async () => {
   await loadCampaigns()
+  await loadGroups()
   await loadStatus()
 })
 </script>
@@ -261,8 +339,44 @@ onMounted(async () => {
         </div>
       </section>
 
-      <!-- 右：需裁决 / 待办 / 判定单 -->
+      <!-- 右：公告检查 / 需裁决 / 判定单 / 待办 -->
       <aside class="eng-col eng-col-side">
+        <h2>公告检查 <em>{{ noticeCheck ? `${noticeCheck.summary.submitted}/${noticeCheck.summary.total}` : '' }}</em></h2>
+        <div class="notice-form">
+          <input v-model="napcatBase" placeholder="NapCat HTTP 地址" @change="saveNapcatBase" />
+          <div class="notice-btns">
+            <button class="eng-btn" :disabled="noticeLoading" @click="checkNotices">检查公告</button>
+            <button class="eng-btn" :disabled="noticeLoading || !noticeCheck" @click="remindMissing">催未交</button>
+          </div>
+        </div>
+        <div v-if="noticeCheck" class="notice-result">
+          <div v-for="c in noticeCheck.checked" :key="c.groupId" class="notice-row" :class="c.hasNotice ? 'ok' : 'miss'">
+            <span>{{ c.class }}</span>
+            <span class="notice-state">{{ c.hasNotice ? (c.confirmed ? '已确认' : '已交') : '未交' }}</span>
+          </div>
+          <div v-for="f in noticeCheck.failed" :key="'f' + f.groupId" class="notice-row fail">
+            <span>{{ f.class }}</span><span class="notice-state">读取失败</span>
+          </div>
+        </div>
+
+        <h2>群映射 <em>{{ groupBindings.length }}</em></h2>
+        <div v-for="g in groupBindings" :key="g.id" class="ticket">
+          <span>{{ g.group_name || g.group_id }}（{{ g.kind }}{{ g.class ? '/' + g.class : '' }}）</span>
+          <button class="act-del" @click="removeGroup(g)">×</button>
+        </div>
+        <div class="reg-form group-add">
+          <input v-model="groupForm.groupId" placeholder="群号" />
+          <input v-model="groupForm.groupName" placeholder="备注名" />
+          <select v-model="groupForm.kind">
+            <option value="private">私组</option>
+            <option value="leyline">灵脉群</option>
+            <option value="public">公屏</option>
+            <option value="gm">GM群</option>
+          </select>
+          <input v-model="groupForm.class" placeholder="职阶" />
+          <button class="eng-btn" @click="addGroup">加</button>
+        </div>
+
         <h2>需裁决 <em>{{ status?.pendingRulings?.length ?? 0 }}</em></h2>
         <div v-if="!(status?.pendingRulings?.length)" class="empty-block small">无待裁决事项</div>
         <div v-for="r in status?.pendingRulings ?? []" :key="r.id" class="ruling">
@@ -406,6 +520,24 @@ onMounted(async () => {
 .act-del:hover { color: #ff5c5c; }
 
 /* 右栏 */
+.notice-form { display: flex; flex-direction: column; gap: 6px; }
+.notice-form input {
+  background: #121317; color: #e8e6e3; border: 1px solid #34374a; padding: 5px 8px; font-size: 12px;
+}
+.notice-btns { display: flex; gap: 6px; }
+.notice-btns .eng-btn { flex: 1; padding: 5px 8px; font-size: 12px; }
+.notice-result { margin-bottom: 8px; }
+.notice-row {
+  display: flex; justify-content: space-between; padding: 4px 8px; margin-bottom: 3px;
+  font-size: 12px; background: #1f222b;
+}
+.notice-row.ok .notice-state { color: #5dd39e; }
+.notice-row.miss .notice-state { color: #ff5c5c; font-weight: 700; }
+.notice-row.fail .notice-state { color: #9a9db0; }
+.group-add { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.group-add input, .group-add select {
+  background: #121317; color: #e8e6e3; border: 1px solid #34374a; padding: 4px 6px; font-size: 12px;
+}
 .ruling, .ticket {
   background: #1f222b; padding: 8px 10px; margin-bottom: 8px; font-size: 12px;
 }
