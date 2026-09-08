@@ -163,21 +163,21 @@ export function ensureEngineTables(db) {
 
   // ===== 引擎表 =====
   db.exec(`
-    -- 本时段行动登记（每个角色每时段主/从各一条；UNIQUE 防重复提交）
+    -- 本时段行动登记（支持多动：异能者等多次行动技能，每动一条 slot 递增）
     CREATE TABLE IF NOT EXISTS engine_actions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       campaign_id INTEGER NOT NULL,
       round INTEGER NOT NULL,
       phase TEXT NOT NULL,             -- 昼/夜
       unit_key TEXT NOT NULL,          -- 单位键：弓从/弓御/枪从...（与别名表 kind 对应）
+      slot INTEGER NOT NULL DEFAULT 1, -- 本时段第几个行动（多动权时 1/2/3…）
       action_key TEXT NOT NULL,        -- 归一后动词（action_rules.action_key）
-      target TEXT,                     -- 目标（灵脉名/单位，可空）
+      target TEXT,                     -- 目标（灵脉/单位）
       variant TEXT,                    -- 变体（如 魂食:遮断/恶性/无限制）
       raw_text TEXT,                   -- 玩家原文
-      status TEXT DEFAULT 'declared',  -- declared/settled/replaced(被介入替换)/void
+      status TEXT DEFAULT 'declared',  -- declared/settled/deferred/replaced(被介入替换)/void
       settle_note TEXT,                -- 结算结果摘要
-      created_at TEXT DEFAULT (datetime('now','localtime')),
-      UNIQUE(campaign_id, round, phase, unit_key)
+      created_at TEXT DEFAULT (datetime('now','localtime'))
     );
 
     -- 角色实时位置（当前所在灵脉；机动的输出）

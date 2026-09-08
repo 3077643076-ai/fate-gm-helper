@@ -2,7 +2,7 @@
 // 消费方：fate-actions 插件（QQ 指令）/ 网页引擎面板（规划中）/ 离线回放
 import { Router } from 'express'
 import { openEngineDb } from './store.mjs'
-import { parseAction } from './parser.mjs'
+import { parseAnnouncement } from './parser.mjs'
 import { settleRound } from './settler.mjs'
 import { fetchGroupNotices, sendGroupMsg } from './qqport.mjs'
 import { join, dirname } from 'node:path'
@@ -52,31 +52,52 @@ router.get('/status', (req, res) => {
   })
 })
 
-// ---------- 登记行动：文本 → parser → 入库（解析失败自动进需裁决） ----------
+// ---------- 登记行动：文本 → 多行动解析（切分器+别名归一） → 逐条入库（失败片段进需裁决） ----------
 router.post('/actions', (req, res) => {
   const { campaignId, round, phase = '昼', unitKey, text } = req.body ?? {}
   if (!requireCampaignId(campaignId)) return res.status(400).json({ error: '需要 campaignId（战役 ID）' })
   if (!unitKey || !text) return res.status(400).json({ error: '需要 unitKey 和 text' })
-  const r = parseAction(db, text, { campaignId, round: round ?? currentRound(campaignId), phase, unitKey })
-  if (!r.ok) {
+  const rRound = round ?? currentRound(campaignId)
+
+  const parsed = parseAnnouncement(db, text, { campaignId, round: rRound, phase, unitKey })
+  const registered = []
+
+  const nextSlot = () => {
+    const row = db.prepare(
+      `SELECT COALESCE(MAX(slot), 0) + 1 AS next FROM engine_actions
+        WHERE campaign_id = ? AND round = ? AND phase = ? AND unit_key = ?`
+    ).get(campaignId, rRound, phase, unitKey)
+    return row.next
+  }
+
+  for (const a of parsed.actions) {
+    const slot = nextSlot()
+    const result = db.prepare(`
+      INSERT INTO engine_actions (campaign_id, round, phase, unit_key, slot, action_key, target, variant, raw_text)
+      VALUES (?,?,?,?,?,?,?,?,?)
+    `).run(campaignId, rRound, phase, unitKey, slot, a.actionKey, a.target, a.variant, a.rawText)
+    registered.push({ id: result.lastInsertRowid, slot, actionKey: a.actionKey, target: a.target, fragment: a.fragment })
+  }
+
+  const rulingIds = []
+  for (const f of parsed.failures) {
     const info = db.prepare(
       `INSERT INTO engine_pending_ruling (campaign_id, round, phase, kind, context) VALUES (?,?,?,?,?)`
-    ).run(campaignId, round ?? currentRound(campaignId), phase, r.kind ?? 'parse_fail', `${unitKey}: ${r.message}`)
-    return res.status(422).json({ error: r.message, pendingRulingId: info.lastInsertRowid })
+    ).run(campaignId, rRound, phase, f.kind ?? 'parse_fail', `${unitKey} 片段"${f.fragment}": ${f.message}`)
+    rulingIds.push(info.lastInsertRowid)
   }
-  const a = r.action
-  try {
-    const result = db.prepare(`
-      INSERT INTO engine_actions (campaign_id, round, phase, unit_key, action_key, target, variant, raw_text)
-      VALUES (?,?,?,?,?,?,?,?)
-    `).run(a.campaignId, a.round, a.phase, a.unitKey, a.actionKey, a.target, a.variant, a.rawText)
-    res.json({ ok: true, id: result.lastInsertRowid, actionKey: a.actionKey, target: a.target, variant: a.variant })
-  } catch (e) {
-    if (String(e.message).includes('UNIQUE')) {
-      return res.status(409).json({ error: `${unitKey} 本时段已有行动（可先 void 原行动）` })
-    }
-    throw e
+
+  if (parsed.noneOk && parsed.failures.length) {
+    return res.status(422).json({ error: parsed.failures[0].message, failures: parsed.failures, pendingRulingIds: rulingIds })
   }
+  res.json({
+    ok: true,
+    registered,
+    failures: parsed.failures,
+    pendingRulingIds: rulingIds,
+    multiAction: registered.length > 1,
+    note: registered.length > 1 ? `${unitKey} 本时段登记了 ${registered.length} 动——请核对其多动权来源（技能/宝具）` : undefined,
+  })
 })
 
 // ---------- 移除已登记行动（void 留痕，结算时跳过） ----------

@@ -7,9 +7,12 @@ import { fileURLToPath } from 'node:url'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 
-/** 归一候选：在别名表里查标准名（精确匹配，M1 版；拼音/编辑距离 M2 接入） */
+/** 归一候选：在别名表里查标准名（精确匹配；kind=action 优先于旧建模行，M1 版拼音/编辑距离 M2 接入） */
 function normalizeByAlias(db, text) {
-  const row = db.prepare(`SELECT canonical, kind FROM alias_registry WHERE alias = ?`).get(text)
+  const row = db.prepare(
+    `SELECT canonical, kind FROM alias_registry WHERE alias = ?
+      ORDER BY CASE kind WHEN 'action' THEN 0 ELSE 1 END, id LIMIT 1`
+  ).get(text)
   return row ?? null
 }
 
@@ -29,12 +32,87 @@ function normalizeLeyline(db, text, campaignId) {
   return null
 }
 
+/** 片段清理：去掉切分残留的连接词开头（先/首先/然后/接着/之后） */
+function cleanFragment(frag) {
+  return frag.replace(/^(?:首先|然后|接着|之后|先)\s*/, '').trim()
+}
+
 /**
- * 解析一条行动文本
- * @param {DatabaseSync} db
- * @param {string} rawText     玩家原文（如 ".行动 机动 灵脉-B" / "魂食遮断"）
- * @param {object} opts        { campaignId, round, phase, unitKey }
- * @returns {object} { ok, action?, needRuling?, message? }
+ * 公告切分：把自由文本切成多个行动片段
+ * 识别：动次标记（一动/二动/①②/行动1…）→ 换行 → 序号列表 → 时段词（白天/晚上）→ 连接词（然后/再/接着/标点）
+ * 原则：切不动的整体返回单片段——切错由"片段解析失败进需裁决"兜底，不丢信息
+ */
+export function splitAnnouncement(text) {
+  const t = String(text ?? '').trim()
+  if (!t) return []
+
+  // 1) 显式动次标记
+  const markRe = /(?:第?[一二三四五1-5]动|行动[一二三四五1-5]?|[①②③④⑤])\s*[:：、，,.]?\s*/g
+  if (markRe.test(t)) {
+    markRe.lastIndex = 0
+    const marks = []
+    let m
+    while ((m = markRe.exec(t)) !== null) marks.push({ start: m.index, end: m.index + m[0].length })
+    const fragments = []
+    for (let i = 0; i < marks.length; i++) {
+      const seg = cleanFragment(t.slice(marks[i].end, i + 1 < marks.length ? marks[i + 1].start : undefined).trim())
+      if (seg) fragments.push(seg)
+    }
+    if (fragments.length > 1) return fragments
+  }
+
+  // 2) 换行
+  const lines = t.split(/\r?\n/).map(s => cleanFragment(s.trim())).filter(Boolean)
+  if (lines.length > 1) return lines
+
+  // 3) 序号列表（1. 2. / 1、2、）
+  const numRe = /(?:^|\s)\d[.、)]\s*/g
+  if (numRe.test(t)) {
+    numRe.lastIndex = 0
+    const marks = []
+    let m
+    while ((m = numRe.exec(t)) !== null) marks.push({ start: m.index, end: m.index + m[0].length })
+    const fragments = []
+    for (let i = 0; i < marks.length; i++) {
+      const seg = cleanFragment(t.slice(marks[i].end, i + 1 < marks.length ? marks[i + 1].start : undefined).trim())
+      if (seg) fragments.push(seg)
+    }
+    if (fragments.length > 1) return fragments
+  }
+
+  // 4) 时段词（白天X晚上Y = 跨时段意向，切成两条登记并备注）
+  const dayNightRe = /\s*(?:白天|日间|晚上|夜里|夜间)\s*/g
+  if (dayNightRe.test(t)) {
+    dayNightRe.lastIndex = 0
+    const segs = t.split(dayNightRe).map(s => cleanFragment(s)).filter(Boolean)
+    if (segs.length > 1) return segs
+  }
+
+  // 5) 连接词与标点
+  const segs = t.split(/\s*(?:然后|再|接着|之后|，|。|；|;)\s*/).map(s => cleanFragment(s)).filter(Boolean)
+  if (segs.length > 1) return segs
+
+  return [cleanFragment(t)]
+}
+
+/**
+ * 解析一整条公告（可能是多个行动）：逐片段解析并汇总
+ * 返回 { actions: [结构化行动]（全部成功的）, failures: [{fragment, message}]（进需裁决）, needRuling }
+ */
+export function parseAnnouncement(db, text, opts = {}) {
+  const fragments = splitAnnouncement(text)
+  const actions = []
+  const failures = []
+  for (const frag of fragments) {
+    const r = parseAction(db, frag, opts)
+    if (r.ok) actions.push({ ...r.action, fragment: frag })
+    else failures.push({ fragment: frag, kind: r.kind ?? 'parse_fail', message: r.message })
+  }
+  return { fragments, actions, failures, allOk: failures.length === 0, noneOk: actions.length === 0 }
+}
+
+/**
+ * 解析单条行动文本（"动词 目标"格式；多行动请用 parseAnnouncement）
  */
 export function parseAction(db, rawText, opts = {}) {
   let text = String(rawText ?? '').trim()
@@ -47,12 +125,21 @@ export function parseAction(db, rawText, opts = {}) {
   let verbToken = parts[0]
   let targetToken = parts.slice(1).join(' ') || null
 
-  // 动词归一：先查别名（"广侦"→广泛侦查 / "吃人"→魂食），再直接作为动词
+  // 动词归一：先查别名（可能命中"动词 目标"复合格式，如 "搓空花"→"解放 虚荣的空中庭院"）
   let actionKey = null
   let variant = null
   const aliasHit = normalizeByAlias(db, verbToken)
   if (aliasHit && aliasHit.kind === 'action') {
-    actionKey = aliasHit.canonical
+    const canonParts = aliasHit.canonical.split(/\s+/)
+    const verbCandidate = canonParts[0]
+    const verbRule = db.prepare(`SELECT action_key FROM action_rules WHERE action_key = ?`).get(verbCandidate)
+    if (verbRule) {
+      // 复合格式：第一词=动词（白名单内），其余=默认目标
+      actionKey = verbCandidate
+      if (canonParts.length > 1 && !targetToken) targetToken = canonParts.slice(1).join(' ')
+    } else {
+      actionKey = aliasHit.canonical
+    }
   } else {
     // 直接命中 action_rules
     const direct = db.prepare(`SELECT action_key FROM action_rules WHERE action_key = ?`).get(verbToken)
