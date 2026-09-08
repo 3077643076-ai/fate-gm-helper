@@ -2,7 +2,8 @@
 // 消费方：fate-actions 插件（QQ 指令）/ 网页引擎面板（规划中）/ 离线回放
 import { Router } from 'express'
 import { openEngineDb } from './store.mjs'
-import { parseAnnouncement } from './parser.mjs'
+import { parseAnnouncement, standardizeAnnouncement, normalizeLeyline } from './parser.mjs'
+import { parseWithLLM } from './llm.mjs'
 import { settleRound } from './settler.mjs'
 import { fetchGroupNotices, sendGroupMsg } from './qqport.mjs'
 import { join, dirname } from 'node:path'
@@ -143,6 +144,61 @@ router.post('/tickets/attach', (req, res) => {
   db.prepare(`UPDATE judgment_ticket SET roll=?, status='attached' WHERE id=?`).run(Math.trunc(Number(roll)), id)
   const verdict = ticket.target != null ? (Math.trunc(Number(roll)) <= ticket.target ? '过' : '未过') : ''
   res.json({ ok: true, verdict })
+})
+
+// ---------- 标准化转换：模糊公告 → 标准行动单（纯规则+别名表，实时零 token） ----------
+// LLM 不在实时链路：看不懂的进需裁决；离线用 tools/llm-enrich.mjs 让 LLM 学新别名（人确认入库）
+router.post('/standardize', async (req, res) => {
+  const { campaignId, round, phase = '昼', unitKey, texts, useLlm = false } = req.body ?? {}
+  if (!unitKey || !Array.isArray(texts)) return res.status(400).json({ error: '需要 unitKey 和 texts（公告文本数组）' })
+
+  const verbs = db.prepare(`SELECT action_key FROM action_rules ORDER BY action_key`).all().map(r => r.action_key)
+  const leylines = db.prepare(`SELECT name FROM leyline WHERE campaign_id = ?`).all(campaignId).map(r => r.name)
+
+  const results = []
+  for (const text of texts) {
+    const { standards, failures, fragments } = standardizeAnnouncement(db, String(text), {
+      campaignId, round: round ?? currentRound(campaignId), phase, unitKey,
+    })
+    const allFailures = [...failures]
+    const llmNotes = []
+
+    // LLM 兜底：规则解析失败的片段交给 LLM 语义解析，输出经白名单校验
+    if (useLlm && failures.length) {
+      for (const f of failures) {
+        const llm = await parseWithLLM(f.fragment, { verbs, leylines, unitKey, round, phase })
+        if (!llm.ok || !llm.actions?.length) {
+          llmNotes.push(`片段"${f.fragment}"：${llm.error ?? (llm.unparsed ? 'LLM 判定无法解析' : 'LLM 无输出')}`)
+          continue
+        }
+        for (const a of llm.actions) {
+          const verb = String(a.verb ?? '').trim()
+          if (!verbs.includes(verb)) {
+            llmNotes.push(`LLM 输出动词"${verb}"不在白名单（片段"${f.fragment}"）→ 需裁决`)
+            allFailures.push({ fragment: f.fragment, kind: 'llm_reject', message: `LLM 给出的动词"${verb}"不在白名单` })
+            continue
+          }
+          let target = a.target ?? null
+          if (target) {
+            const ley = normalizeLeyline(db, target, campaignId)
+            if (ley && typeof ley === 'string') target = ley
+          }
+          const rule = db.prepare(`SELECT * FROM action_rules WHERE action_key = ?`).get(verb)
+          const fakeAction = { unitKey, actionKey: verb, target, variant: null }
+          standards.push({
+            standard: formatActionStandard(fakeAction, rule, { round, phase }) + (a.note ? `（LLM:${a.note}）` : ''),
+            fragment: f.fragment,
+            actionKey: verb,
+            target,
+            llm: true,
+          })
+        }
+      }
+    }
+
+    results.push({ text, standards, failures: allFailures, llmNotes })
+  }
+  res.json({ results })
 })
 
 // ---------- 群映射（私组/灵脉群/公屏/GM 群的配置，分发版各团自己录） ----------

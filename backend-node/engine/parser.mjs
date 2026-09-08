@@ -17,7 +17,7 @@ function normalizeByAlias(db, text) {
 }
 
 /** 目标灵脉归一：支持"灵脉-B"/"B脉"/直接灵脉名（战役无关，campaignId 由调用方传入） */
-function normalizeLeyline(db, text, campaignId) {
+export function normalizeLeyline(db, text, campaignId) {
   if (!text) return null
   const t = String(text).trim()
   if (!campaignId) throw new Error('normalizeLeyline 需要 campaignId')
@@ -38,15 +38,45 @@ function cleanFragment(frag) {
 }
 
 /**
- * 公告切分：把自由文本切成多个行动片段
- * 识别：动次标记（一动/二动/①②/行动1…）→ 换行 → 序号列表 → 时段词（白天/晚上）→ 连接词（然后/再/接着/标点）
- * 原则：切不动的整体返回单片段——切错由"片段解析失败进需裁决"兜底，不丢信息
+ * 公告预处理：剥离"从者：/御主："角色前缀与时段头（"第N天昼"/"day1昼"），
+ * 按 | 分段（真实公告的常见结构），输出干净的候选片段
+ */
+export function preprocessAnnouncement(text) {
+  let t = String(text ?? '').trim()
+  // 去时段头（开头或竖线段首："第1天昼"、"day1夜"、"第一日昼"）
+  t = t.replace(/(?:^|\|)\s*(?:第\s*[0-9一二三四五六七八九]+\s*[天日]|day\s*\d+)\s*(?:昼|夜)?\s*/gi, '|')
+  // 角色前缀 → 换成分段标记（从者：X 御主：Y = 两条行动；空格分隔同样识别）
+  t = t.replace(/(从者|御主)\s*[:：]?\s*/g, '|')
+  // 竖线分段
+  const segs = t.split(/\|/).map(s => s.trim()).filter(Boolean)
+  // 每段内部再按顿号/逗号细切（如 "阵地制作，同时额外宣言俩次"）
+  const out = []
+  for (const seg of segs) {
+    for (const piece of seg.split(/\s*[，,]\s*/)) {
+      const p = piece.trim()
+      if (p) out.push(p)
+    }
+  }
+  return out
+}
+
+/**
+ * 公告切分总入口：结构化预处理（角色前缀/竖线/时段头）+ 递归细分 + 五级切分
  */
 export function splitAnnouncement(text) {
   const t = String(text ?? '').trim()
   if (!t) return []
 
-  // 1) 显式动次标记
+  // 0) 结构化预处理：剥时段头、"从者：/御主："前缀转竖线、竖线与逗号分段
+  const pre = preprocessAnnouncement(t)
+  if (pre.length > 1) {
+    const out = []
+    for (const seg of pre) out.push(...splitAnnouncement(seg))
+    return out
+  }
+  if (pre.length === 1 && pre[0] !== t) return splitAnnouncement(pre[0])
+
+  // 1) 显式动次标记（一动：xxx 二动：yyy）
   const markRe = /(?:第?[一二三四五1-5]动|行动[一二三四五1-5]?|[①②③④⑤])\s*[:：、，,.]?\s*/g
   if (markRe.test(t)) {
     markRe.lastIndex = 0
@@ -112,7 +142,53 @@ export function parseAnnouncement(db, text, opts = {}) {
 }
 
 /**
- * 解析单条行动文本（"动词 目标"格式；多行动请用 parseAnnouncement）
+ * 标准化单条行动的表示（模糊公告的"标准行动单"输出格式）
+ * 格式：第N天{phase} {单位} {动词} [→ 目标]（{变体}｜链:位置｜判定x%｜魔力±n｜限制）
+ */
+export function formatActionStandard(a, rule, opts = {}) {
+  const timepoint = `第${opts.round ?? '?'}天${opts.phase ?? ''}`
+  let line = `${timepoint} ${a.unitKey} ${a.actionKey}`
+  if (a.target) line += ` → ${a.target}`
+  if (a.variant) line += `（${a.variant}）`
+  const notes = []
+  if (rule) {
+    if (rule.phase) notes.push(`链:${rule.phase}`)
+    if (rule.base_rate != null) {
+      let rate = `判定${rule.base_rate}%`
+      if (Number(rule.day_bonus)) rate += `（昼+${rule.day_bonus}）`
+      if (Number(rule.night_bonus)) rate += `（夜+${rule.night_bonus}）`
+      notes.push(rate)
+    }
+    if (rule.rate_formula) notes.push(`判定:${rule.rate_formula}`)
+    if (Number(rule.mana_cost)) notes.push(`魔力-${rule.mana_cost}`)
+    if (Number(rule.mana_gain)) notes.push(`魔力+${rule.mana_gain}`)
+    if (rule.limit_per) notes.push(rule.limit_per)
+  }
+  line += notes.length ? `（${notes.join('｜')}）` : ''
+  return line
+}
+
+/**
+ * 模糊公告 → 标准行动单（纯转换，不落库——预览/批量转换用）
+ * 返回 { standards: [{standard, fragment, actionKey}], failures: [{fragment, message}] }
+ */
+export function standardizeAnnouncement(db, text, opts = {}) {
+  const parsed = parseAnnouncement(db, text, opts)
+  const standards = []
+  for (const a of parsed.actions) {
+    const rule = db.prepare(`SELECT * FROM action_rules WHERE action_key = ?`).get(a.actionKey)
+    standards.push({
+      standard: formatActionStandard(a, rule, opts),
+      fragment: a.fragment,
+      actionKey: a.actionKey,
+      target: a.target,
+    })
+  }
+  return { standards, failures: parsed.failures }
+}
+
+/**
+ * 解析单条行动文本（"动词 目标"格式；多行动公告请用 parseAnnouncement）
  */
 export function parseAction(db, rawText, opts = {}) {
   let text = String(rawText ?? '').trim()
