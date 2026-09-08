@@ -304,6 +304,36 @@ export function ensureEngineTables(db) {
       card_id INTEGER,
       missing INTEGER DEFAULT 0
     );
+
+    -- 战斗主记录（交互式状态机：formation→initial→main→final→done）
+    CREATE TABLE IF NOT EXISTS engine_battles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      campaign_id INTEGER NOT NULL,
+      round INTEGER,
+      phase TEXT,
+      leyline TEXT,
+      width INTEGER DEFAULT 3,
+      attacker TEXT DEFAULT 'blue',
+      blue_formation TEXT,
+      yellow_formation TEXT,
+      blue_stats TEXT,
+      yellow_stats TEXT,
+      missing_notes TEXT,
+      blue_tactic TEXT,
+      yellow_tactic TEXT,
+      tactic_result TEXT,
+      blue_main_attr TEXT,
+      yellow_main_attr TEXT,
+      random_attr TEXT,
+      corrections TEXT DEFAULT '{}',
+      floor_penalty TEXT DEFAULT '{}',
+      death_fight TEXT DEFAULT '{}',
+      win_rate TEXT,
+      result TEXT,
+      status TEXT DEFAULT 'formation',
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      updated_at TEXT
+    );
   `)
 }
 

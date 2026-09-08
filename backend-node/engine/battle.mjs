@@ -8,7 +8,7 @@ const BASE_RATE_TABLE = {
   9: 90, 8: 80, 7: 70, 6: 60, 5: 50, 4: 40, 3: 30, 2: 20, 1: 10,
 }
 const TACTIC_COUNTER = { 强击: '扼守', 破袭: '强击', 试探: '破袭', 扼守: '试探' } // A 克制 B：A>B
-const STATS = ['strength', 'endurance', 'agility', 'mana', 'luck'] // 除等级/宝具外的可修正属性
+export const STATS = ['strength', 'endurance', 'agility', 'mana', 'luck'] // 除等级/宝具外的可修正属性
 const FLOOR_RATE = 10 // 底限胜率
 
 /** 三属性对抗 → 基础胜率（优3/平2/劣1） */
@@ -134,21 +134,15 @@ export function calcWinRate(p) {
   const yellowLevel = yellowStats.units.find(u => u.slot === 'main')?.stats?.level ?? 0
   const levelDiff = blueLevel - yellowLevel
 
-  // 3) 属性总计差（辅助/仆役减半后、支援不计的 totals）
-  const statDiffBlue = Object.entries(blueStats.totals)
-    .filter(([k]) => k !== 'level')
-    .reduce((s, [k, v]) => s + v, 0)
-  const statDiffYellow = Object.entries(yellowStats.totals)
-    .filter(([k]) => k !== 'level')
-    .reduce((s, [k, v]) => s + v, 0)
-  const statDiff = statDiffBlue - statDiffYellow
-
-  // 4) 战术属性加成（强击 +20）
+  // 3) 属性补正差（胜率链里的"属性补正"= 技能/战术带来的属性加成，每点=1 胜率；
+  //    面板总计不在此重复计——它已经体现在三属性对比的基础胜率里）
   const tacticStatBlue = p.tactics?.effect?.blue?.statBonus
     ? p.tactics.effect.blue.statBonus.value : 0
   const tacticStatYellow = p.tactics?.effect?.yellow?.statBonus
     ? p.tactics.effect.yellow.statBonus.value : 0
-  const statDiffTotal = statDiff + tacticStatBlue - tacticStatYellow
+  const corrStatBlue = Number(p.corrections?.blue?.statBonus ?? 0)
+  const corrStatYellow = Number(p.corrections?.yellow?.statBonus ?? 0)
+  const statDiffTotal = (tacticStatBlue + corrStatBlue) - (tacticStatYellow + corrStatYellow)
 
   // 5) 工序胜率修正累计（战术扼守/死斗/技能/冲锋等由 GM 或联动填入 corrections）
   const blueCorr = corr.blue.pre + corr.blue.initial + corr.blue.main + corr.blue.final

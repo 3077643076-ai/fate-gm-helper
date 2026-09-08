@@ -102,6 +102,8 @@ app.use('/api/engine', engineRouter);
   try {
     const engine = await import('./engine/router.mjs');
     engineRouter.use(engine.default);
+    const battleRouter = await import('./engine/battle-router.mjs');
+    engineRouter.use(battleRouter.default);
     console.log('[engine] /api/engine 路由已挂载');
   } catch (e) {
     console.error('[engine] 挂载失败:', e.message);
@@ -109,7 +111,8 @@ app.use('/api/engine', engineRouter);
 })();
 
 // 托管前端静态文件（生产模式）
-const frontendDist = path.join(__dirname, '..', 'frontend', 'dist');
+// 前端静态资源：分发版用 FATE_FRONTEND_DIST 指向内置资源；开发/本机用项目目录
+const frontendDist = process.env.FATE_FRONTEND_DIST || path.join(__dirname, '..', 'frontend', 'dist');
 app.use(express.static(frontendDist, { index: false }));
 
 // SPA fallback：非 API 请求都返回 index.html
