@@ -260,10 +260,97 @@ async function remindMissing() {
   } finally { noticeLoading.value = false }
 }
 
+// ---------- 战斗流程（创建→战术→属性→修正→决胜） ----------
+const ATTR_LABELS = [
+  { v: 'strength', l: '筋力' }, { v: 'endurance', l: '耐久' }, { v: 'agility', l: '敏捷' },
+  { v: 'mana', l: '魔力' }, { v: 'luck', l: '幸运' }, { v: 'noblePhantasm', l: '宝具' },
+]
+const TACTICS = ['强击', '破袭', '试探', '扼守']
+const battleId = ref(Number(localStorage.getItem('engine-battle-id')) || null)
+const battle = ref(null)
+const battleForm = ref({ leyline: '', width: 5, blueMain: '枪从', blueAssist: '枪御', yellowMain: '术从', yellowAssist: '术御' })
+const tacticsForm = ref({ blue: '强击', yellow: '扼守' })
+const attrsForm = ref({ blue: 'strength', yellow: 'mana' })
+const corrForm = ref({ stage: 'main', side: 'blue', value: 10, note: '' })
+const finalForm = ref({ blueDeath: false, yellowDeath: false, roll: '' })
+const battleMsg = ref('')
+
+async function bpost(path, body, silentOk) {
+  const r = await fetch(`/api/engine/battles${path}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  })
+  const body2 = await r.json().catch(() => ({}))
+  if (!r.ok) { battleMsg.value = body2.error ?? `HTTP ${r.status}`; log(battleMsg.value, 'error'); return null }
+  if (!silentOk) battleMsg.value = ''
+  return body2
+}
+
+async function createBattle() {
+  const f = battleForm.value
+  const body = {
+    campaignId: campaignId.value, round: round.value, phase: phase.value,
+    leyline: f.leyline, width: Number(f.width), attacker: 'blue',
+    blue: { main: f.blueMain, assists: f.blueAssist ? [f.blueAssist] : [] },
+    yellow: { main: f.yellowMain, assists: f.yellowAssist ? [f.yellowAssist] : [] },
+  }
+  const r = await fetch('/api/engine/battles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  const res = await r.json()
+  if (!r.ok) { battleMsg.value = res.error ?? '创建失败'; log('创建战斗失败：' + battleMsg.value, 'error'); return }
+  battleId.value = res.battleId
+  localStorage.setItem('engine-battle-id', res.battleId)
+  log(`战斗 #${res.battleId} 已创建：${f.leyline || '未填地点'}（宽 ${f.width}）`, 'ok')
+  await loadBattle()
+}
+
+async function loadBattle() {
+  if (!battleId.value) return
+  const r = await fetch(`/api/engine/battles/${battleId.value}`)
+  if (!r.ok) { battle.value = null; return }
+  battle.value = await r.json()
+}
+
+async function setTactics() {
+  const r = await bpost(`/${battleId.value}/tactics`, { blue: tacticsForm.value.blue, yellow: tacticsForm.value.yellow })
+  if (!r) return
+  const t = r.body
+  log(`战术结算：${t.counter}${t.invalid.blue ? '（蓝战术无效）' : ''}${t.invalid.yellow ? '（黄战术无效）' : ''}`, 'ok')
+  await loadBattle()
+}
+
+async function setAttrs() {
+  const r = await bpost(`/${battleId.value}/attrs`, { blue: attrsForm.value.blue, yellow: attrsForm.value.yellow })
+  if (!r) return
+  log(`主要属性已选定，随机属性骰出：${r.body.randomAttr}｜当前胜率 ${r.body.winRate.actual}%`, 'ok')
+  await loadBattle()
+}
+
+async function applyCorrection() {
+  const c = corrForm.value
+  const r = await bpost(`/${battleId.value}/correction`, { stage: c.stage, side: c.side, value: Number(c.value), note: c.note })
+  if (!r) return
+  log(`修正已应用：${r.body.applied}｜当前胜率 ${r.body.winRate.actual}%`, 'ok')
+  await loadBattle()
+}
+
+async function doFinalize() {
+  const f = finalForm.value
+  const body = { blueDeath: f.blueDeath, yellowDeath: f.yellowDeath }
+  if (f.roll !== '') body.roll = Number(f.roll)
+  const r = await bpost(`/${battleId.value}/finalize`, body)
+  if (!r) return
+  const winnerName = r.body.winner === 'blue' ? '蓝方（袭击方）' : '黄方（防守方）'
+  log(`决胜：D100=${r.body.roll} vs ${r.body.rate}% → ${winnerName}`, 'head')
+  log(`等级魔耗清算：${(r.body.ledger ?? []).map(l => `${l.role} ${l.delta}`).join(' / ') || '无'}`, 'info')
+  await loadBattle()
+}
+
+const battleStageText = { formation: '战斗开始时（战术宣言）', initial: '初始工序（选主要属性）', main: '主要工序（能力修正）', final: '最终工序（死斗/决胜）', done: '已结束' }
+
 onMounted(async () => {
   await loadCampaigns()
   await loadGroups()
   await loadStatus()
+  if (battleId.value) await loadBattle()
 })
 </script>
 
@@ -378,6 +465,108 @@ onMounted(async () => {
         </div>
 
         <h2>需裁决 <em>{{ status?.pendingRulings?.length ?? 0 }}</em></h2>
+        <!-- ===== 战斗流程操作区 ===== -->
+        <h2>战斗流程 <em v-if="battle">#{{ battleId }} · {{ battleStageText[battle.status] }}</em></h2>
+
+        <!-- 无战斗：创建 -->
+        <div v-if="!battle" class="battle-block">
+          <p class="battle-hint">宣言袭击后创建战斗。能力发动为<b>手动申报制</b>：申报一条算一条，藏拙的技能不申报就不计入。</p>
+          <div class="battle-grid">
+            <input v-model="battleForm.leyline" placeholder="战斗地点（灵脉名）" />
+            <label>宽度 <input type="number" min="1" max="7" v-model.number="battleForm.width" /></label>
+            <select v-model="battleForm.blueMain"><option v-for="u in unitOptions" :key="u" :value="u">{{ u }}</option></select>
+            <select v-model="battleForm.blueAssist"><option value="">（无辅助）</option><option v-for="u in unitOptions" :key="u" :value="u">{{ u }}</option></select>
+            <select v-model="battleForm.yellowMain"><option v-for="u in unitOptions" :key="u" :value="u">{{ u }}</option></select>
+            <select v-model="battleForm.yellowAssist"><option value="">（无辅助）</option><option v-for="u in unitOptions" :key="u" :value="u">{{ u }}</option></select>
+          </div>
+          <button class="eng-btn eng-btn-primary" @click="createBattle">创建战斗（蓝=袭击方）</button>
+        </div>
+
+        <!-- 有战斗：按阶段操作 -->
+        <div v-else class="battle-block">
+          <!-- 计算表（常显） -->
+          <div class="battle-stats" v-if="battle.stats">
+            <div>
+              <h4>蓝方合计</h4>
+              <pre>{{ JSON.stringify(battle.stats.blue.totals) }}</pre>
+            </div>
+            <div>
+              <h4>黄方合计</h4>
+              <pre>{{ JSON.stringify(battle.stats.yellow.totals) }}</pre>
+            </div>
+          </div>
+
+          <!-- 当前胜率大字 -->
+          <div class="wr-big" v-if="battle.winRate">
+            <span class="wr-num">{{ battle.winRate.actual }}%</span>
+            <span class="wr-label">蓝方当前胜率</span>
+            <span v-if="battle.winRate.clampedByFloor" class="wr-floor">⚠ 底限生效</span>
+          </div>
+
+          <!-- 阶段：formation → 战术 -->
+          <div v-if="battle.status === 'formation'" class="battle-step">
+            <h4>战术宣言（双方主力位各选一）</h4>
+            <div class="battle-grid">
+              <label>蓝战术 <select v-model="tacticsForm.blue"><option v-for="t in TACTICS" :key="t" :value="t">{{ t }}</option></select></label>
+              <label>黄战术 <select v-model="tacticsForm.yellow"><option v-for="t in TACTICS" :key="t" :value="t">{{ t }}</option></select></label>
+            </div>
+            <button class="eng-btn eng-btn-primary" @click="setTactics">结算战术（克制判定）</button>
+          </div>
+
+          <!-- 阶段：initial → 主要属性 -->
+          <div v-if="battle.status === 'initial'" class="battle-step">
+            <h4>主力位选主要属性（随机属性引擎骰出）</h4>
+            <div class="battle-grid">
+              <label>蓝主要 <select v-model="attrsForm.blue"><option v-for="a in ATTR_LABELS" :key="a.v" :value="a.v">{{ a.l }}</option></select></label>
+              <label>黄主要 <select v-model="attrsForm.yellow"><option v-for="a in ATTR_LABELS" :key="a.v" :value="a.v">{{ a.l }}</option></select></label>
+            </div>
+            <button class="eng-btn eng-btn-primary" @click="setAttrs">确定属性（出基础胜率）</button>
+          </div>
+
+          <!-- 阶段：main → 修正输入（可重复申报；藏拙=不申报不计入） -->
+          <div v-if="battle.status === 'main' || battle.status === 'initial' || battle.status === 'final'" class="battle-step">
+            <h4>能力发动申报（藏拙=不申报不计入；每条单独应用）</h4>
+            <div class="battle-grid corr">
+              <label>阶段
+                <select v-model="corrForm.stage">
+                  <option value="statBonus">属性补正（每点=1胜率）</option>
+                  <option value="initial">初始工序胜率</option>
+                  <option value="main">主要工序胜率</option>
+                  <option value="final">最终工序胜率</option>
+                  <option value="pre">战前胜率</option>
+                </select>
+              </label>
+              <label>方向
+                <select v-model="corrForm.side"><option value="blue">蓝方</option><option value="yellow">黄方</option></select>
+              </label>
+              <label>数值 <input type="number" v-model.number="corrForm.value" /></label>
+              <input v-model="corrForm.note" placeholder="备注（如：吕布宝具/太平要术）" />
+            </div>
+            <button class="eng-btn" @click="applyCorrection">应用修正</button>
+          </div>
+
+          <!-- 阶段：main 可进最终 → 死斗+决胜 -->
+          <div v-if="battle.status === 'main'" class="battle-step">
+            <h4>最终工序：死斗宣言 + 决胜检定</h4>
+            <div class="battle-grid final">
+              <label><input type="checkbox" v-model="finalForm.blueDeath" /> 蓝方死斗（+20%，不可撤退）</label>
+              <label><input type="checkbox" v-model="finalForm.yellowDeath" /> 黄方死斗（+20%，不可撤退）</label>
+              <input v-model="finalForm.roll" placeholder="决胜 D100（留空=引擎掷）" />
+            </div>
+            <button class="eng-btn eng-btn-primary" @click="doFinalize">决胜检定（含等级魔耗清算）</button>
+          </div>
+
+          <!-- done：结果 -->
+          <div v-if="battle.status === 'done' && battle.result" class="battle-result">
+            胜方：{{ battle.result.winner === 'blue' ? '蓝方' : '黄方' }}（D100={{ battle.result.roll }} vs {{ battle.result.rate }}%）
+            <div class="battle-again">
+              <button class="eng-btn" @click="battleId = null; battle = null; localStorage.removeItem('engine-battle-id')">开新战斗</button>
+            </div>
+          </div>
+
+          <p v-if="battleMsg" class="battle-msg">{{ battleMsg }}</p>
+        </div>
+
         <div v-if="!(status?.pendingRulings?.length)" class="empty-block small">无待裁决事项</div>
         <div v-for="r in status?.pendingRulings ?? []" :key="r.id" class="ruling">
           <p class="ruling-ctx">#{{ r.id }} {{ r.context }}</p>
@@ -518,6 +707,31 @@ onMounted(async () => {
   background: none; border: none; color: #565a6e; font-size: 15px; cursor: pointer;
 }
 .act-del:hover { color: #ff5c5c; }
+
+/* ===== 战斗流程区 ===== */
+.battle-block { background: #1f222b; padding: 10px 12px; margin-bottom: 12px; }
+.battle-hint { font-size: 12px; color: #9a9db0; margin: 0 0 8px; }
+.battle-hint b { color: #ff8a2a; }
+.battle-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px; }
+.battle-grid.corr { grid-template-columns: 1fr 70px 70px; }
+.battle-grid.final { grid-template-columns: 1fr; }
+.battle-grid label { font-size: 12px; color: #9a9db0; display: flex; align-items: center; gap: 5px; }
+.battle-grid input, .battle-grid select {
+  background: #121317; color: #e8e6e3; border: 1px solid #34374a; padding: 5px 8px; font-size: 13px; width: 100%;
+}
+.battle-step { margin-bottom: 10px; }
+.battle-step h4 { font-size: 13px; color: #c8cbd8; margin: 0 0 6px; }
+.battle-stats { display: flex; gap: 10px; margin-bottom: 10px; }
+.battle-stats > div { flex: 1; background: #121317; padding: 6px 8px; }
+.battle-stats h4 { font-size: 11px; color: #9a9db0; margin: 0 0 4px; }
+.battle-stats pre { margin: 0; font-size: 11px; color: #c8cbd8; white-space: pre-wrap; font-family: ui-monospace, monospace; }
+.wr-big { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; }
+.wr-num { font-size: 28px; font-weight: 800; color: #ff8a2a; font-family: ui-monospace, monospace; }
+.wr-label { font-size: 12px; color: #9a9db0; }
+.wr-floor { font-size: 12px; color: #f5c542; }
+.battle-result { background: #23262f; padding: 10px; font-weight: 700; color: #5dd39e; }
+.battle-again { margin-top: 8px; }
+.battle-msg { font-size: 12px; color: #ff5c5c; margin: 6px 0 0; }
 
 /* 右栏 */
 .notice-form { display: flex; flex-direction: column; gap: 6px; }
