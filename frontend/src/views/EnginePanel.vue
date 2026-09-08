@@ -260,6 +260,77 @@ async function remindMissing() {
   } finally { noticeLoading.value = false }
 }
 
+// ---------- AI 助手（v0.5-B：程序骨架 + LLM 填空，自动收行动） ----------
+// AI 只做：查公告 → 标准化登记 → LLM 兜底解析 → 私组确认回执 → 催未交
+// 不做：推进结算（改账本的操作永远 GM 手按）；外发消息强制过出口闸（真名→代号）
+const agentCfgForm = ref({ agentEnabled: false, agentIntervalMinutes: 30, agentLlmEnabled: true, agentTokenBudget: 20000, napcatWsUrl: '' })
+const agentStatus = ref(null)     // { timer: {note,lastRunAt,...}, collector: {connected, note} }
+const agentLoading = ref(false)
+
+async function loadAgentConfig() {
+  const r = await fetch('/api/engine/agent/config')
+  const c = await r.json()
+  agentCfgForm.value = {
+    agentEnabled: c.agentEnabled === '1',
+    agentIntervalMinutes: Number(c.agentIntervalMinutes) || 30,
+    agentLlmEnabled: c.agentLlmEnabled === '1',
+    agentTokenBudget: Number(c.agentTokenBudget) || 20000,
+    napcatWsUrl: c.napcatWsUrl ?? '',
+  }
+}
+
+async function saveAgentConfig() {
+  if (!campaignId.value) { log('请先选择战役', 'warn'); return }
+  const f = agentCfgForm.value
+  const r = await fetch('/api/engine/agent/config', {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      agentEnabled: f.agentEnabled ? '1' : '0',
+      agentIntervalMinutes: String(f.agentIntervalMinutes || 30),
+      agentLlmEnabled: f.agentLlmEnabled ? '1' : '0',
+      agentTokenBudget: String(f.agentTokenBudget || 20000),
+      agentCampaignId: String(campaignId.value),
+      napcatHttpBase: napcatBase.value,   // HTTP 地址与公告检查区共用一个
+      napcatWsUrl: f.napcatWsUrl,
+    }),
+  })
+  if (r.ok) {
+    log('AI 助手配置已保存（定时器/消息监听已按新配置重装）', 'ok')
+    await loadAgentStatus()
+  } else {
+    log('AI 配置保存失败：' + (await r.json()).error, 'error')
+  }
+}
+
+async function loadAgentStatus() {
+  const r = await fetch('/api/engine/agent/status')
+  if (r.ok) agentStatus.value = await r.json()
+}
+
+// 一键收行动：查公告 → 登记（LLM 兜底）→ 确认回执 → 催未交
+async function runAgent() {
+  if (!campaignId.value) { log('请先选择战役', 'warn'); return }
+  agentLoading.value = true
+  try {
+    const r = await fetch('/api/engine/agent/run', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ campaignId: campaignId.value, napcatBase: napcatBase.value }),
+    })
+    const body = await r.json()
+    if (!r.ok) { log('AI 收行动失败：' + body.error, 'error'); return }
+    const t = body.totals
+    log(`AI 收行动完成：已交 ${t.submitted} 组，登记 ${t.registered} 条（跳重 ${t.duplicates}），需裁决 ${t.rulings} 条，LLM ${t.llmCalls} 次/${body.tokens} token，催办 ${t.reminded} 组`, t.errors ? 'warn' : 'ok')
+    for (const g of body.groups) {
+      const desc = g.error ? '（' + g.error + '）'
+        : g.submitted ? `登记 ${g.registered}${g.duplicates ? ' · 跳重 ' + g.duplicates : ''}${g.rulings ? ' · 待裁决 ' + g.rulings : ''}`
+        : '未交'
+      log(`  ${g.class}：${desc}`, g.error ? 'error' : (g.submitted ? 'info' : 'warn'))
+    }
+    await loadStatus()
+    await loadAgentStatus()
+  } finally { agentLoading.value = false }
+}
+
 // ---------- 战斗流程（创建→战术→属性→修正→决胜） ----------
 const ATTR_LABELS = [
   { v: 'strength', l: '筋力' }, { v: 'endurance', l: '耐久' }, { v: 'agility', l: '敏捷' },
@@ -350,6 +421,8 @@ onMounted(async () => {
   await loadCampaigns()
   await loadGroups()
   await loadStatus()
+  await loadAgentConfig()
+  await loadAgentStatus()
   if (battleId.value) await loadBattle()
 })
 </script>
@@ -462,6 +535,24 @@ onMounted(async () => {
           </select>
           <input v-model="groupForm.class" placeholder="职阶" />
           <button class="eng-btn" @click="addGroup">加</button>
+        </div>
+
+        <h2>AI 助手 <em v-if="agentStatus?.collector?.connected">监听中</em></h2>
+        <div class="agent-block">
+          <label class="agent-row"><input type="checkbox" v-model="agentCfgForm.agentLlmEnabled" /> LLM 兜底（规则解析失败时用）</label>
+          <label class="agent-row">token 预算 <input type="number" min="1000" step="1000" v-model.number="agentCfgForm.agentTokenBudget" /></label>
+          <label class="agent-row"><input type="checkbox" v-model="agentCfgForm.agentEnabled" /> 定时自动收行动</label>
+          <label class="agent-row" v-if="agentCfgForm.agentEnabled">间隔（分钟） <input type="number" min="5" v-model.number="agentCfgForm.agentIntervalMinutes" /></label>
+          <input v-model="agentCfgForm.napcatWsUrl" placeholder="NapCat WS 地址（收消息日志，如 ws://127.0.0.1:3001）" />
+          <div class="notice-btns">
+            <button class="eng-btn eng-btn-primary" :disabled="agentLoading" @click="runAgent">一键收行动</button>
+            <button class="eng-btn" @click="saveAgentConfig">保存配置</button>
+          </div>
+          <p class="agent-status" v-if="agentStatus">
+            定时：{{ agentStatus.timer.note }}<template v-if="agentStatus.timer.lastRunAt">，上次 {{ agentStatus.timer.lastRunAt.slice(5, 16).replace('T', ' ') }}</template>
+            <br />消息监听：{{ agentStatus.collector.note }}
+          </p>
+          <p class="agent-hint">AI 只登记行动、发私组回执；不推进结算；外发消息强制替换真名为代号。</p>
         </div>
 
         <h2>需裁决 <em>{{ status?.pendingRulings?.length ?? 0 }}</em></h2>
@@ -767,6 +858,18 @@ onMounted(async () => {
 .ticket { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .todos { list-style: none; margin: 0; padding: 0; font-size: 12px; }
 .todos li { padding: 5px 8px; border-bottom: 1px solid #23262f; color: #f5c542; }
+
+/* ===== AI 助手区 ===== */
+.agent-block { background: #1f222b; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+.agent-row { font-size: 12px; color: #9a9db0; display: flex; align-items: center; gap: 5px; justify-content: space-between; }
+.agent-row input[type="number"] {
+  background: #121317; color: #e8e6e3; border: 1px solid #34374a; padding: 3px 6px; width: 76px; font-size: 12px;
+}
+.agent-block > input {
+  background: #121317; color: #e8e6e3; border: 1px solid #34374a; padding: 4px 6px; font-size: 12px;
+}
+.agent-status { font-size: 11px; color: #9a9db0; margin: 0; line-height: 1.6; }
+.agent-hint { font-size: 11px; color: #565a6e; margin: 0; }
 
 /* ===== 底部日志 ===== */
 .eng-log { background: #121317; border-top: 1px solid #34374a; padding: 8px 16px 12px; }

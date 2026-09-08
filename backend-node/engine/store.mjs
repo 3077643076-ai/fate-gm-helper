@@ -230,6 +230,44 @@ export function ensureEngineTables(db) {
       UNIQUE(campaign_id, group_id)
     );
 
+    -- ===== 以下为 v0.5 AI 助手（agent）相关表 =====
+
+    -- 消息日志：QQ 群聊/私聊/公告/AI 外发全量留痕（复盘/审计/给 LLM 的上下文素材）
+    -- 注意：含玩家发言，只进本地库，不进任何导出/git
+    CREATE TABLE IF NOT EXISTS message_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      campaign_id INTEGER,
+      channel TEXT NOT NULL,           -- group=群聊 / private=私聊 / notice=群公告 / agent_out=AI 发出 / panel=面板操作
+      group_id TEXT,
+      group_name TEXT,
+      user_id TEXT,
+      user_name TEXT,
+      content TEXT NOT NULL,
+      text_hash TEXT,                  -- 内容摘要（公告去重/幂等用）
+      raw TEXT,                        -- 原始事件 JSON（群聊才有，可选）
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+
+    -- AI 助手审计日志：AI 每一步工具调用/LLM 调用记一条，出事可倒放
+    CREATE TABLE IF NOT EXISTS agent_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      campaign_id INTEGER,
+      run_id TEXT NOT NULL,            -- 一次"收行动"运行的编号
+      step TEXT NOT NULL,              -- run/check/standardize/llm_parse/register/remind/confirm/exit_gate
+      target TEXT,                     -- 目标（群号/单位键）
+      ok INTEGER DEFAULT 1,
+      detail TEXT,                     -- JSON 摘要（动作/参数/结果/hash）
+      tokens INTEGER DEFAULT 0,        -- 本步 LLM 消耗 token
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+
+    -- AI 助手配置（KV；面板可改；后端重启后仍生效）
+    CREATE TABLE IF NOT EXISTS agent_config (
+      key TEXT PRIMARY KEY,
+      value TEXT,
+      updated_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+
     -- ===== 以下为工具/口径表（分发空库首次启动也要齐全，DDL 与各模块定义保持一致） =====
 
     -- 魔力账本（每笔变动一行）

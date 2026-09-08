@@ -104,7 +104,12 @@ app.use('/api/engine', engineRouter);
     engineRouter.use(engine.default);
     const battleRouter = await import('./engine/battle-router.mjs');
     engineRouter.use(battleRouter.default);
-    console.log('[engine] /api/engine 路由已挂载');
+    const agentRouter = await import('./engine/agent-router.mjs');
+    // 挂在 /agent 前缀下：agent 路由器内部注册的是 /config /run 等，拼起来 = /api/engine/agent/*
+    engineRouter.use('/agent', agentRouter.default);
+    // v0.5 AI 助手后台任务：定时收行动 + QQ 消息监听（都按库里的配置来，没配置就是空转）
+    agentRouter.startBackground();
+    console.log('[engine] /api/engine 路由已挂载（含 agent）');
   } catch (e) {
     console.error('[engine] 挂载失败:', e.message);
   }

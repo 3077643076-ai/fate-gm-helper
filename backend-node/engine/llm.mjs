@@ -65,11 +65,12 @@ export async function suggestAliases(fragments, context = {}) {
 
 /**
  * 用 LLM 把一段模糊公告解析成结构化行动（实时兜底，默认关闭；离线丰富走 suggestAliases）
- * @returns {object} { ok, actions: [{verb, target, note}], llmUsed, unparsed, error }
+ * @returns {object} { ok, actions: [{verb, target, note}], llmUsed, unparsed, tokens, error }
+ *   tokens = 本次调用消耗的 token 总量（agent 预算控制用；取不到时为 0）
  */
 export async function parseWithLLM(fragment, context = {}) {
   const apiKey = getKey()
-  if (!apiKey) return { ok: false, llmUsed: false, error: '未配置 DEEPSEEK_API_KEY（data/deepseek.key 或环境变量），LLM 解析跳过' }
+  if (!apiKey) return { ok: false, llmUsed: false, tokens: 0, error: '未配置 DEEPSEEK_API_KEY（data/deepseek.key 或环境变量），LLM 解析跳过' }
 
   const verbs = context.verbs ?? []
   const leylines = context.leylines ?? []
@@ -99,17 +100,19 @@ export async function parseWithLLM(fragment, context = {}) {
         ],
       }),
     })
-    if (!resp.ok) return { ok: false, llmUsed: true, error: `DeepSeek ${resp.status}` }
+    if (!resp.ok) return { ok: false, llmUsed: true, tokens: 0, error: `DeepSeek ${resp.status}` }
     const body = await resp.json()
+    // token 用量：usage.total_tokens（agent 预算控制用）
+    const tokens = Number(body?.usage?.total_tokens) || 0
     const content = body?.choices?.[0]?.message?.content ?? ''
     const jsonMatch = content.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) return { ok: false, llmUsed: true, error: 'LLM 输出无 JSON' }
+    if (!jsonMatch) return { ok: false, llmUsed: true, tokens, error: 'LLM 输出无 JSON' }
     const parsed = JSON.parse(jsonMatch[0])
-    if (parsed.unparsed) return { ok: false, llmUsed: true, unparsed: parsed.unparsed, actions: [] }
+    if (parsed.unparsed) return { ok: false, llmUsed: true, unparsed: parsed.unparsed, actions: [], tokens }
     const actions = Array.isArray(parsed.actions) ? parsed.actions : []
-    return { ok: true, llmUsed: true, actions }
+    return { ok: true, llmUsed: true, actions, tokens }
   } catch (e) {
-    return { ok: false, llmUsed: true, error: e.message }
+    return { ok: false, llmUsed: true, tokens: 0, error: e.message }
   } finally {
     clearTimeout(timer)
   }

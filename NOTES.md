@@ -1,5 +1,51 @@
 # NOTES.md
 
+## 2026-09-08（晚）
+
+**引擎 v0.5-B 完成：AI 进引擎框架当操作员（收行动工作流）+ 全量消息日志**
+- 背景：GM 实测轨 A（dsh+SOP）幻想需提醒、回复慢、爱写真名；拍板 B 方案——
+  AI 当操作员，引擎 API 当框架（错误从"编造事实"变成"调错动作"，引擎校验兜底）
+- 新增 engine/exitgate.mjs 出口闸：AI 外发文本确定性检查——目标渠道非私组直接拦；
+  按角色卡表把真名（张角/曹植类）替换成单位键（术从/术御），GM 不用再手动翻译
+- 新增 engine/qqws.mjs 消息采集器：旁听 NapCat 正向 WS（多客户端共存），
+  群聊/私聊消息全量落 message_log；断线自动重连（5s 起步退避到 60s）
+- 新增 engine/agent.mjs 收行动工作流：查各私组公告 → 按 从者/御主 前缀分段标准化
+  （分段自动归 弓从/弓御 单位键）→ 纯规则成功直接登记 → 失败片段 LLM 兜底
+  （DeepSeek，动词白名单校验，token 预算控制）→ 仍失败进需裁决 → 私组确认回执 →
+  催未交；公告按内容 hash 幂等 + 登记 Level 查重，重复跑不重复登记不刷屏；
+  公告头"第N天昼"自动识别回合/时段
+- 新增 engine/agent-router.mjs（挂 /api/engine/agent/*）：run/config/logs/
+  messages/status/collector-restart；配置存 agent_config KV 表，定时器
+  （agentEnabled+间隔，最小 5 分钟）和消息监听随配置自动重装
+- EnginePanel 右栏新增 AI 助手区：LLM 开关/token 预算/定时开关+间隔/NapCat WS
+  地址/一键收行动/运行摘要（登记几条、跳重几条、裁决几条、LLM 几次几个 token）
+- 三张新表：message_log（全量消息留痕，含玩家发言只进本地库）/ agent_log
+  （AI 每步审计+token）/ agent_config
+- 边界（程序级）：AI 不碰 advance（推进永远 GM 手按）；外发必过出口闸；
+  审计全留痕；LLM 超预算自动停用兜底
+- 测试：engine/e2e-agent.mjs 22/22 全绿（mock QQ 端口、关 LLM 纯离线）；
+  /api/engine/agent 七端点冒烟通过
+- **踩坑**：engineRouter.use(agentRouter.default) 挂载后路由 404——子路由器
+  use() 不带路径时看到的是完整剩余路径 /agent/config，而内部注册的是 /config，
+  匹配不上；修法 engineRouter.use('/agent', agentRouter.default)。battle 路由
+  能通纯粹因为其路径自带 /battles 前缀，把这个坑盖住了
+- 注意：本机 8100 有个旧代码 node 实例（PID 34600）在跑，要重启才有 agent 路由
+- 下一步：真实带团试跑一键收行动；需裁决 AI 猜测建议（spec 预留字段）下一轮
+
+## 2026-09-08（早）
+
+**AI 工具层（轨 A）实测反馈：越跑越漂 + 真名泄露——GM 方向讨论中**
+- 用户昨日实测 dsh/SOP 辅助结算：开头统计输出尚可，越到后面越漂（对话变长上下文
+  退化，SOP 的"状态只信库"靠提示词撑不住全程）
+- 关键痛点：AI 输出爱写真名而不是 QQ 名/代号，GM 得手动翻映射；本规则里真名=
+  真名猜测机制核心（被猜中=敌方白拿全卡情报），泄露不只是麻烦，是游戏事故
+- "一律用代号"已写在工具铁律提示词里（tools/fate-gm-tools/index.mjs:52），仍挡
+  不住——印证引擎规格"提示词级约束 vs 程序级约束"的判断
+- 用户列的 AI 用途（查未交/催行动/结算链排序/魔力提醒）引擎面板已全覆盖
+  （公告检查 c8e5ece、结算链 M1、魔力台账对账）
+- 待定方向：①AI 层若保留，加程序级"真名→代号"输出闸（按角色表确定性替换）；
+  ②功能整体切引擎面板，AI 只留判例答疑（M4 现路线）
+
 ## 2026-09-07（晚 28）
 
 **战斗流程状态机完成并推送（301e84d）——GM：双跑对比开始**
