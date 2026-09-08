@@ -21,6 +21,7 @@ cpSync(src, dest, {
       && !/^scripts\\_|^scripts\/_/.test(rel)
       && !/_dump_/.test(rel)
       && rel !== 'data/gm_helper.db-wal' && rel !== 'data/gm_helper.db-shm'
+      && rel !== 'data/gm_helper.db'   // 分发版不带战役数据（首启自动建空库），防泄密
   },
 })
 console.log('staging 完成 → frontend/electron-backend-staging')

@@ -1,51 +1,55 @@
 {
-    "name":  "frontend",
-    "private":  true,
-    "version":  "0.0.0",
-    "type":  "module",
-    "scripts":  {
-                    "dev":  "vite",
-                    "build":  "vite build",
-                    "preview":  "vite preview",
-                    "test":  "node src/composables/useBattlePhaseBoard.test.mjs \u0026\u0026 node src/composables/useBattleSideSlots.test.mjs \u0026\u0026 node src/composables/useBattleStatusEffects.test.mjs",
-                    "electron":  "electron .",
-                    "dist":  "node ../tools/stage-backend.mjs \u0026\u0026 electron-builder --win portable"
-                },
-    "dependencies":  {
-                         "vue":  "^3.5.24",
-                         "vue-router":  "^4.6.3",
-                         "xlsx":  "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
-                     },
-    "devDependencies":  {
-                            "@vitejs/plugin-vue":  "^6.0.1",
-                            "electron":  "^44.2.0",
-                            "electron-builder":  "^26.15.3",
-                            "vite":  "npm:rolldown-vite@7.2.5"
-                        },
-    "overrides":  {
-                      "vite":  "npm:rolldown-vite@7.2.5"
-                  },
-    "main":  "electron/main.cjs",
-    "build":  {
-                  "appId":  "com.fategm.engine",
-                  "productName":  "SanguoEngine",
-                  "directories":  {
-                                      "output":  "../desktop"
-                                  },
-                  "files":  [
-                                "dist/**/*",
-                                "electron/**/*"
-                            ],
-                  "extraResources":  [
-                                         {
-                                             "to":  "backend",
-                                             "from":  "electron-backend-staging"
-                                         }
-                                     ],
-                  "win":  {
-                              "target":  [
-                                             "portable"
-                                         ]
-                          }
-              }
+  "name": "frontend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node src/composables/useBattlePhaseBoard.test.mjs && node src/composables/useBattleSideSlots.test.mjs && node src/composables/useBattleStatusEffects.test.mjs",
+    "electron": "electron .",
+    "dist": "node ../tools/stage-backend.mjs && electron-builder --win portable"
+  },
+  "dependencies": {
+    "vue": "^3.5.24",
+    "vue-router": "^4.6.3",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.1",
+    "electron": "^44.2.0",
+    "electron-builder": "^26.15.3",
+    "vite": "npm:rolldown-vite@7.2.5"
+  },
+  "overrides": {
+    "vite": "npm:rolldown-vite@7.2.5"
+  },
+  "main": "electron/main.cjs",
+  "build": {
+    "appId": "com.fategm.engine",
+    "productName": "SanguoEngine",
+    "directories": {
+      "output": "../desktop"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*"
+    ],
+    "extraResources": [
+      {
+        "to": "backend",
+        "from": "electron-backend-staging"
+      },
+      {
+        "from": "dist",
+        "to": "frontend-dist"
+      }
+    ],
+    "win": {
+      "target": [
+        "portable"
+      ]
+    }
+  }
 }

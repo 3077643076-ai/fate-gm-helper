@@ -7,6 +7,161 @@ import { DatabaseSync } from 'node:sqlite'
  * @param {DatabaseSync} db
  */
 export function ensureEngineTables(db) {
+  // ===== 业务表（与 backend-node/db.js 的 initSchema 保持一致；分发版空库首次启动也要齐全） =====
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS campaign (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      description TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS character_card (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      code TEXT,
+      class_name TEXT,
+      raw_text TEXT,
+      card_type TEXT NOT NULL DEFAULT 'SERVANT',
+      campaign_id INTEGER REFERENCES campaign(id),
+      total_level INTEGER DEFAULT 0,
+      total_strength INTEGER DEFAULT 0,
+      total_endurance INTEGER DEFAULT 0,
+      total_agility INTEGER DEFAULT 0,
+      total_mana INTEGER DEFAULT 0,
+      total_luck INTEGER DEFAULT 0,
+      total_noble_phantasm INTEGER DEFAULT 0,
+      base_level INTEGER DEFAULT 0,
+      base_strength INTEGER DEFAULT 0,
+      base_endurance INTEGER DEFAULT 0,
+      base_agility INTEGER DEFAULT 0,
+      base_mana INTEGER DEFAULT 0,
+      base_luck INTEGER DEFAULT 0,
+      base_noble_phantasm INTEGER DEFAULT 0,
+      corr_level INTEGER DEFAULT 0,
+      corr_strength INTEGER DEFAULT 0,
+      corr_endurance INTEGER DEFAULT 0,
+      corr_agility INTEGER DEFAULT 0,
+      corr_mana INTEGER DEFAULT 0,
+      corr_luck INTEGER DEFAULT 0,
+      corr_noble_phantasm INTEGER DEFAULT 0,
+      class_skills TEXT,
+      personal_skills TEXT,
+      noble_phantasms TEXT,
+      workshops TEXT,
+      craft_essences TEXT,
+      retired INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS campaign_round (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      campaign_id INTEGER NOT NULL REFERENCES campaign(id),
+      turn_number INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'OPEN',
+      created_at TEXT DEFAULT (datetime('now')),
+      closed_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS leyline (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      campaign_id INTEGER NOT NULL REFERENCES campaign(id),
+      name TEXT NOT NULL,
+      mana_amount INTEGER NOT NULL DEFAULT 0,
+      battlefield_width INTEGER NOT NULL DEFAULT 0,
+      population_flow INTEGER NOT NULL DEFAULT 0,
+      effect TEXT,
+      description TEXT,
+      assigned_character_ids TEXT
+    );
+    CREATE TABLE IF NOT EXISTS leyline_assignment (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      campaign_id INTEGER NOT NULL REFERENCES campaign(id),
+      leyline_id INTEGER NOT NULL REFERENCES leyline(id),
+      character_card_id INTEGER NOT NULL REFERENCES character_card(id)
+    );
+    CREATE TABLE IF NOT EXISTS character_status (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      character_card_id INTEGER NOT NULL REFERENCES character_card(id),
+      campaign_id INTEGER NOT NULL REFERENCES campaign(id),
+      round_number INTEGER NOT NULL,
+      current_mana INTEGER,
+      mana_limit INTEGER,
+      current_command_seals INTEGER,
+      status_effects TEXT,
+      status_effects_list TEXT,
+      notes TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(character_card_id, campaign_id, round_number)
+    );
+    CREATE TABLE IF NOT EXISTS action_submission (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      round_id INTEGER NOT NULL REFERENCES campaign_round(id),
+      round_number INTEGER NOT NULL,
+      campaign_id INTEGER NOT NULL REFERENCES campaign(id),
+      servant_class TEXT NOT NULL,
+      action_type TEXT NOT NULL,
+      content TEXT NOT NULL,
+      submitted_by TEXT,
+      is_current INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS action_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      campaign_id INTEGER NOT NULL REFERENCES campaign(id),
+      round_number INTEGER NOT NULL,
+      closed_at TEXT,
+      action_order TEXT,
+      servant_actions TEXT,
+      master_actions TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS action_record (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      campaign_id INTEGER NOT NULL REFERENCES campaign(id),
+      day INTEGER NOT NULL,
+      period TEXT NOT NULL,
+      servant_class TEXT NOT NULL,
+      role TEXT NOT NULL,
+      content TEXT NOT NULL DEFAULT '',
+      updated_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(campaign_id, day, period, servant_class, role)
+    );
+    CREATE TABLE IF NOT EXISTS skill_template (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      rank TEXT,
+      skill_type TEXT,
+      timing TEXT,
+      position_limit TEXT,
+      mana_cost INTEGER DEFAULT 0,
+      cooldown INTEGER DEFAULT 0,
+      stat_modifiers TEXT,
+      win_rate_modifier INTEGER DEFAULT 0,
+      enemy_win_rate_modifier INTEGER DEFAULT 0,
+      status_effects TEXT,
+      raw_text TEXT,
+      notes TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS app_settings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      setting_key TEXT UNIQUE NOT NULL,
+      setting_value TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS qq_group_binding (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      platform TEXT NOT NULL,
+      guild_id TEXT NOT NULL,
+      campaign_id INTEGER NOT NULL REFERENCES campaign(id),
+      group_name TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(platform, guild_id)
+    );
+  `)
+
+  // ===== 引擎表 =====
   db.exec(`
     -- 本时段行动登记（每个角色每时段主/从各一条；UNIQUE 防重复提交）
     CREATE TABLE IF NOT EXISTS engine_actions (
@@ -73,6 +228,81 @@ export function ensureEngineTables(db) {
       class TEXT,                      -- 私组职阶
       leyline TEXT,                    -- 灵脉群对应灵脉
       UNIQUE(campaign_id, group_id)
+    );
+
+    -- ===== 以下为工具/口径表（分发空库首次启动也要齐全，DDL 与各模块定义保持一致） =====
+
+    -- 魔力账本（每笔变动一行）
+    CREATE TABLE IF NOT EXISTS mana_ledger (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      role TEXT NOT NULL,
+      delta INTEGER NOT NULL,
+      reason TEXT NOT NULL,
+      source TEXT,
+      round INTEGER,
+      phase TEXT,
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+
+    -- 判定单（投点登记制）
+    CREATE TABLE IF NOT EXISTS judgment_ticket (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id TEXT NOT NULL,
+      role TEXT NOT NULL,
+      action_name TEXT NOT NULL,
+      target INTEGER,
+      status TEXT NOT NULL DEFAULT 'open',
+      roll INTEGER,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      updated_at TEXT
+    );
+
+    -- 别名注册表（俗称→标准名，会自动生长）
+    CREATE TABLE IF NOT EXISTS alias_registry (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      alias TEXT NOT NULL,
+      canonical TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      note TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(alias, canonical)
+    );
+
+    -- 魔力口径表
+    CREATE TABLE IF NOT EXISTS mana_rules (
+      rule_key TEXT PRIMARY KEY,
+      rule_text TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending_confirm',
+      source TEXT,
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    -- 行动规则表（引擎 parser/settler 数据源）
+    CREATE TABLE IF NOT EXISTS action_rules (
+      action_key   TEXT PRIMARY KEY,
+      who          TEXT,
+      base_rate    INTEGER,
+      rate_formula TEXT,
+      day_bonus    INTEGER DEFAULT 0,
+      night_bonus  INTEGER DEFAULT 0,
+      costs_action INTEGER DEFAULT 1,
+      mana_cost    INTEGER DEFAULT 0,
+      mana_gain    INTEGER DEFAULT 0,
+      phase        TEXT NOT NULL,
+      limit_per    TEXT,
+      effect_text  TEXT,
+      source       TEXT,
+      status       TEXT DEFAULT 'confirmed'
+    );
+
+    -- 单位注册表（单位键→角色卡映射）
+    CREATE TABLE IF NOT EXISTS unit_registry (
+      unit_key TEXT PRIMARY KEY,
+      class TEXT NOT NULL,
+      side TEXT NOT NULL,
+      code TEXT,
+      card_id INTEGER,
+      missing INTEGER DEFAULT 0
     );
   `)
 }

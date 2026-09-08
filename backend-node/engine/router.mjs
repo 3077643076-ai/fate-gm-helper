@@ -6,9 +6,17 @@ import { parseAction } from './parser.mjs'
 import { settleRound } from './settler.mjs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { createRequire } from 'node:module'
 
-const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
-const dbPath = process.env.FATE_GM_DB_PATH || join(root, 'backend-node', 'data', 'gm_helper.db')
+// backend 根 = engine 目录的上一级——开发与打包两种目录结构下 db.js 都在这里
+//（开发：<root>/backend-node/engine → <root>/backend-node；打包：<res>/backend/engine → <res>/backend）
+const backendRoot = dirname(dirname(fileURLToPath(import.meta.url)))
+const dbPath = process.env.FATE_GM_DB_PATH || join(backendRoot, 'data', 'gm_helper.db')
+
+// 分发版空库：先触发主后端的业务表初始化（campaign 等表），再开引擎表
+const requireCjs = createRequire(import.meta.url)
+requireCjs(join(backendRoot, 'db.js')).getDb()
+
 const db = openEngineDb(dbPath)
 
 const router = Router()

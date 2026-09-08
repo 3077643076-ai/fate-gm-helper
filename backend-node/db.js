@@ -1,6 +1,55 @@
-const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
+
+// ---------- 数据库驱动双模式 ----------
+// 首选 better-sqlite3（本机 node 环境，ABI 匹配）；
+// 加载失败（如 Electron 运行时 ABI 不同）时自动回退 Node 内置 node:sqlite 的兼容适配层，
+// 使同一份代码在"本机开发"与"分发 exe"两种环境都能跑。
+let Database;
+let driverName = 'better-sqlite3';
+try {
+  const BetterSqlite3 = require('better-sqlite3');
+  // ABI 探测必须实例化：.node 二进制的版本检查发生在 dlopen（new）时而非 require 时
+  BetterSqlite3(':memory:').close();
+  Database = BetterSqlite3;
+} catch (e) {
+  driverName = 'node:sqlite-compat';
+  const { DatabaseSync } = require('node:sqlite');
+
+  // 预处理语句包装：清洗参数类型（undefined→null、boolean→1/0），对齐 better-sqlite3 行为
+  class StatementCompat {
+    constructor(stmt) { this._stmt = stmt; }
+    _clean(params) {
+      return params.map(p => (p === undefined ? null : (typeof p === 'boolean' ? (p ? 1 : 0) : p)));
+    }
+    run(...params) { return this._stmt.run(...this._clean(params)); }
+    all(...params) { return this._stmt.all(...this._clean(params)); }
+    get(...params) { return this._stmt.get(...this._clean(params)); }
+  }
+
+  // 连接包装：提供 prepare/exec/pragma/transaction 四个 better-sqlite3 常用接口
+  class DatabaseCompat {
+    constructor(file) { this._db = new DatabaseSync(file); }
+    prepare(sql) { return new StatementCompat(this._db.prepare(sql)); }
+    exec(sql) { return this._db.exec(sql); }
+    pragma(source) { return this._db.exec(`PRAGMA ${source}`); }
+    transaction(fn) {
+      const raw = this._db;
+      return function (...args) {
+        raw.exec('BEGIN');
+        try {
+          const result = fn(...args);
+          raw.exec('COMMIT');
+          return result;
+        } catch (err) {
+          raw.exec('ROLLBACK');
+          throw err;
+        }
+      };
+    }
+  }
+  Database = DatabaseCompat;
+}
 
 const DB_PATH = process.env.FATE_GM_DB_PATH || path.join(__dirname, 'data', 'gm_helper.db');
 
@@ -16,6 +65,7 @@ function getDb() {
     db.pragma('journal_mode = WAL');
     db.pragma('foreign_keys = ON');
     initSchema(db);
+    console.log(`[db] 驱动: ${driverName}，库: ${DB_PATH}`);
   }
   return db;
 }
