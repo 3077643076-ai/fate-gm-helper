@@ -467,6 +467,7 @@ onMounted(async () => {
         <h2>需裁决 <em>{{ status?.pendingRulings?.length ?? 0 }}</em></h2>
         <!-- ===== 战斗流程操作区 ===== -->
         <h2>战斗流程 <em v-if="battle">#{{ battleId }} · {{ battleStageText[battle.status] }}</em></h2>
+        <p class="battle-link"><a href="/engine-battle" target="_blank">打开完整战斗表（表格化核对页）</a></p>
 
         <!-- 无战斗：创建 -->
         <div v-if="!battle" class="battle-block">
@@ -732,6 +733,9 @@ onMounted(async () => {
 .battle-result { background: #23262f; padding: 10px; font-weight: 700; color: #5dd39e; }
 .battle-again { margin-top: 8px; }
 .battle-msg { font-size: 12px; color: #ff5c5c; margin: 6px 0 0; }
+
+.battle-link a { color: #6aa6ff; font-size: 12px; }
+.battle-link a:hover { color: #ff8a2a; }
 
 /* 右栏 */
 .notice-form { display: flex; flex-direction: column; gap: 6px; }
