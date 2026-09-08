@@ -1,5 +1,161 @@
 # NOTES.md
 
+## 2026-09-07（晚 28）
+
+**战斗流程状态机完成并推送（301e84d）——GM：双跑对比开始**
+- battle-state.mjs：五阶段状态机（formation→initial→main→final→done），每步
+  API 可操作：createBattle（自动计算表）/setTactics（克制结算）/setMainAttrs
+  （主要属性+引擎骰随机属性）/applyCorrection（statBonus 属性补正+四阶段胜率
+  修正）/finalize（死斗+决胜 D100+等级魔耗清算）
+- battle-router.mjs：/api/engine/battles 七端点
+- 修三个 bug：①胜率链双计（面板总计已在三属性对比里，不重复计胜率差；属性补
+  正只算技能/战术加成，新增 corrections.statBonus 桶）②corrections 规范化
+  （新建战斗 corrections={} 导致 .blue.statBonus 炸）③battle-router 子路由
+  路径需带前缀（'/' 匹配不到 /api/engine/battles）
+- e2e 实测（术vs枪）：创建→强击vs破袭（克制正确：强击无效）→属性选择→
+  属性+30→胜率修正-10→死斗+20→决胜 D100→清算 全绿；数学逐步验算自洽
+  （三属性 优优劣=70%基础 → 属性+30=80% → 术-10=85% → 术死斗+20=75% →
+  D100=55≤75 枪组胜）
+- 双跑对比方法：同一战斗引擎跑一遍（API 序列）+ 战斗表/Excel 跑一遍，逐步对
+  胜率链数字；差异=校准点
+
+## 2026-09-07（晚 27）
+
+**实战首战准备：术组 vs 枪组 @许都（第二回合）**
+- 张角卡从 _cards dump 补录（id=24，合计 70/20/20/20/90/40/0，Caster；技能/宝具
+  待 GM 核对），unit_registry 术从已关联——**双方计算表齐了**
+- 枪组魔力补第二回合更正版（吕布 150/150、曹丕 80/110，来自状态记录公告）；
+  术组（张角/曹植）无状态记录，魔力不足预查待 GM 提供
+- 计算表速览：枪组 等级90/筋力175/耐久135；术组 等级95/筋力27/魔力102——
+  枪组筋力碾压（175 vs 27），术组魔力特化型；战术默认演示=强击vs扼守
+- battle-prep-sanguo.mjs：战前准备脚本（补卡+计算表+战术+魔力预查）
+- 下一场注意：术组公告实锤跨时段写法与"结阵3"口径待确认；枪组吕布宝具/技能
+  名单待录（战斗工序能力联动用）
+
+## 2026-09-07（晚 26）
+
+**架构定案：LLM 只做离线丰富，实时链路零 token（d19f638）——GM：token 不够烧**
+- 成本对比回应用户：dsh 带团每天 3-4 元；实时 LLM 解析虽便宜（~0.1元/天）但
+  仍烧钱；定案=**LLM 离线学别名，带团实时纯规则零 token**
+- /api/engine/standardize 改纯规则模式（useLlm 默认 false）；真实公告实证：
+  "第一天昼 | 从者：广泛侦查 | 御主 礼装制作 契约之书"→ 两条标准行动单
+  （含时点/单位/动词/目标/结算链/判定值）✓
+- llm-enrich 工具（离线）：规则解析失败的片段→LLM 产别名建议（白名单约束）→
+  人确认 --apply 入库；一次几百 token≈几厘钱
+- 别名建模再修正：canonical="动词 目标"复合（parser 拆动词查白名单+目标自动
+  填充）；normalizeByAlias action 优先排序；同别名旧行清理；角色前缀空格变体剥离
+- 修 bug：parser normalizeLeyline 补 export（router import 崩）
+- 标准化输出格式（用户要的"xx（行动时点）xx（机动目标/发动技能）"）：
+  `第N天{phase} {单位} {动词} → {目标}（链:xx｜判定x%｜魔力±n｜限制）`
+
+## 2026-09-07（晚 25）
+
+**公告解析增强完成并推送（2bd7919）——GM：公告格式千奇百怪+多动问题**
+- 切分器 splitAnnouncement：动次标记（一动/二动/①②）→ 换行 → 序号列表 →
+  时段词（白天/晚上，切分后登记当前时段+备注跨时段意向）→ 连接词（然后/再/标点）
+  → 片段清理（"先"残留）；切不动整体返回，失败片段进需裁决兜底不丢信息
+- 多动登记：engine_actions 去 UNIQUE 加 slot 列（每动一条）；API 返回
+  multiAction 提示核对多动权来源
+- 别名建模修正：canonical 改"动词 目标"复合格式（搓空花→"解放 虚荣的空中庭院"），
+  parser 拆分动词查白名单+目标自动填充；查询 action 优先排序；旧建模（noble）行清理
+- 实测：结阵→阵地制作（别名）、"开殿 然后广侦"→两动全解析、"一动：搓空花
+  二动：制作制裁机关"→搓空花成功+制裁机关进需裁决（口径未录，正确行为）
+- 待录口径：制裁机关（工房构件制作，判定/消耗 GM 定）；跨时段公告的时段分配规则
+
+## 2026-09-07（晚 24）
+
+**公告检查功能完成并推送（c8e5ece）——GM：一键催行动**
+- 新增 engine/qqport.mjs：直连 NapCat HTTP（_get_group_notice/_send_group_notice/
+  send_group_msg），HTML 实体解码同 fate-actions
+- /api/engine 新端点：groups CRUD（群映射，分发版各团自己录）、notices/check
+  （遍历私组拉公告：有公告=已交，含"机器人已确认"=已确认，无=未交，逐群容错）、
+  notices/remind（向未交组发提醒，默认文案带回合时段）
+- 面板右栏新增：公告检查区（NapCat 地址 localStorage 记住 + 检查/催未交按钮 +
+  分组状态列表）+ 群映射管理（增删）
+- 验证：群映射 CRUD ✓；公告检查错误路径 ✓（无 NapCat 时 fetch failed 进 failed
+  数组不炸接口）
+- **部署前提**：NapCat 需开启 HTTP Server（如 127.0.0.1:3000）——之前只用 WS
+  模式（3001），面板使用前要在 NapCat WebUI 网络配置里开启 HTTP 服务
+
+## 2026-09-07（晚 23）
+
+**分发版 exe 完成并推送（6c9729f）——干净目录终测全绿**
+- 分发形态：单个 exe（desktop/SanguoEngine 0.0.0.exe ~110MB）拷到任何目录双击：
+  自起后端（7-9 秒）→ /engine 页面（内置前端托管）→ data/ 目录自动生成空库
+  （业务表+引擎表+工具表全量自动初始化）→ 战役下拉空=主站 localhost:8100 建新杯
+- 三层修复：①main.cjs 改 PORTABLE_EXECUTABLE_DIR/data 数据库（随目录迁移）
+  +FATE_FRONTEND_DIST 内置前端环境变量 ②backend-node/db.js 双模式驱动
+  （better-sqlite3 ABI 不匹配自动回退 node:sqlite 兼容适配层，覆盖 prepare/exec/
+  pragma/transaction；探测必须 new 实例化——dlopen 时才检查 ABI）
+  ③engine/router.mjs backendRoot 推导修正（打包目录结构 ≠ 开发目录结构，
+  engine 上一级=backend 根，两种结构通用）
+- stage-backend.mjs：node_modules 改名 nm_payload 绕过 electron-builder 强排除；
+  filter 排除 gm_helper.db（**分发版不带战役数据，防泄密**）
+- 空库闭环体验缺口（下轮）：面板加"新建战役"按钮；口径/别名导出导入 API
+  （新杯快速套用三国杯验证过的 24 条口径）
+
+## 2026-09-07（晚 22）
+
+**引擎控制台打包成独立 exe 成功（00283a6）**
+- 产物：desktop/SanguoEngine 0.0.0.exe（便携版 ~108MB），双击=自起后端（7秒）+
+  弹 MAA 风格引擎窗口，关窗自动收后端
+- 结构：Electron 壳（frontend/electron/main.cjs）spawn ELECTRON_RUN_AS_NODE 模式
+  跑 backend 副本；extraResources 拷 backend-node 整目录（node_modules 改名
+  nm_payload 绕过 electron-builder 强制排除，main.cjs 启动前 rename 回来）
+- 打包流程：npm --prefix frontend run dist（自动先跑 tools/stage-backend.mjs
+  staging：拷 backend-node 排除 backups/test/_cards 等）
+- 三个坑：①electron-builder 强排除 node_modules（连改名来源都拦？实际是拦
+  目标名 node_modules，staging 改名 nm_payload 即可）②portable 体积 ~108MB
+  （Electron+Chromium）③better-sqlite3 走系统 node ABI（ELECTRON_RUN_AS_NODE
+  与系统 node 的 modules 版本一致性——本机自用 OK，跨机器分发需 electron rebuild）
+
+## 2026-09-07（晚 21）
+
+**多战役适配完成并推送（b8b376c）——GM：引擎要适配后续的杯子**
+- GM 指出面板标题写死"三国杯"→ 全链路清查硬编码：
+  ①parser.mjs normalizeLeyline 写死 campaign_id=999002（真 bug，别的战役解析
+  不了灵脉目标）→ 参数化
+  ②router.mjs 四处默认 999002 → campaignId 必传校验（requireCampaignId，
+  绝不默认到某个杯）
+  ③EnginePanel 加战役下拉（/api/campaigns）+ 动态标题 + localStorage 记住选择
+- 验证：切"测试杯"标题跟随；后端重启后 status/rulings/tickets 全 200
+- 原则沉淀：引擎=多战役通用代码，某杯的数据（灵脉/口径/别名/群映射）全走
+  配置和录入，一个硬编码都不留
+
+## 2026-09-07（晚 20）
+
+**引擎控制台面板完成（MAA 风格深色独立窗口）**
+- frontend/src/views/EnginePanel.vue：深色作战台（底#121317/面板#1b1d24/强调橙
+  #ff8a2a/切角 clip-path 元素），三栏（结算链导航+行动登记+需裁决/判定单/待办）
+  +底部引擎日志；对接 /api/engine 七端点；/engine 路由；App.vue 对 /engine 隐藏
+  NavBar/footer
+- start-engine.bat：构建 → 后端 → Edge --app 模式独立窗口（1280×860），
+  用户诉求"MAA 那种桌面程序"=网页技术+app 壳，无需 Electron
+- frontend 补装 xlsx（package.json 声明了但 node_modules 没装，构建曾失败）
+- 端到端验证：面板登记"广泛侦查"→引擎入库→UI 分组显示→日志反馈，闭环 OK
+- 灵脉效果架构确认（GM：每把都不一样）→ 效果类型驱动：引擎内置效果类型结算器
+  （供魔/人流/判定 buff/属性补正/拦截/专属行动），灵脉配置=效果类型+参数数据，
+  换团录数据不改代码——写进引擎规格待办
+
+## 2026-09-07（晚 19）
+
+**M3 战斗引擎核心完成并推送（68a6fa4）——GM 优先级调整：战斗>自动拉群**
+- 战斗结算规格 v0.1（docs/战斗结算规格.md）：五阶段状态机/战斗位与宽度/胜率链/
+  结算链五级排序/FP 撤退/游荡，三源合一（规则书战斗章+battle-sheet 六大清单+
+  前端 useBattleCalculator 移植）
+- 魔力不足惩罚定稿：**规则书线性口径**（每-20=全属性-10，下限5），Excel 档位表
+  废弃；引擎算建议值、GM 可手填覆盖（实际惯例是 GM 手填）
+- 可选规则默认不启用：差值减半（双从者主力时胜率差距减半）、放弃追击（初始工序
+  结束免等级魔耗）——开团配置可开
+- battle.mjs 核心：calcSideStats（编队属性，辅助/仆役减半、支援不计）/
+  applyTactics（克制环 强击>破袭>试探>扼守，被克制无效）/calcWinRate（三属性
+  对抗→基础胜率→等级差→属性差→双向抵消至100→保底 clamp）/finalJudge/
+  afterBattleLedger（等级魔耗）
+- 离线回放通过：吕布+曹丕 vs 魏延+刘协，强击克扼守（黄无效）、三属性 优劣劣=
+  基础50%、蓝110 vs 黄30→胜率90%、D100=45 蓝胜、清算 吕布-35/魏延-40/刘协-25
+- M3 剩余：engine_battles 表+工序状态机（交互式工序提交）+技能联动（M2 模板库）+
+  QQ 接线
+
 ## 2026-09-07（晚 18）
 
 **M1 完成并推送（31457ad）：引擎 API 端到端测试全绿**
@@ -274,3 +430,13 @@
 3. 问 dsh：NapCat 接口基地址/调用方式（关卡代理配置用）
 4. A1 数据初始化（恢复三国杯说明.md → 建"三国杯"战役、导卡、灵脉、别名表）
 5. A2/A2.5 工具脚本 → A3 关卡 → A4 常驻配置 → 实战验证一个时段
+
+## 2026-09-08
+
+**独立战斗表页面完成并推送（293ab02）——GM：要专门页面+和 Excel 战斗表相同+玩家核对**
+- frontend/src/views/EngineBattleSheet.vue（/engine-battle/:battleId?）：复刻 Excel
+  战斗表结构（其他 GM 零适应）：一、战斗计算表（编队/七维对比/战术行）→ 二、
+  属性对抗（优平劣+计分+基础胜率）→ 三、胜率链（基础/等级差/属性补正/累计/实际
+  含保底标注）→ 四、能力发动申报（藏拙=不申报不计入）→ 五、死斗+决胜+清算
+- 操作按阶段渲染；表格化 Excel 观感，深色主题统一；playwright 手动全流程验证通过
+- EnginePanel 战斗区加"打开完整战斗表"链接
