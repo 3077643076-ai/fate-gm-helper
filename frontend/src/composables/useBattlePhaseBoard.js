@@ -8,6 +8,9 @@ export const PHASES = [
   { key: 'RESULT', label: '决胜结算' },
 ]
 
+// 5.2.1 效果链排序工具：单个技能/宝具内部的效果按链序处理和展示
+import { sortEffectsByEffectChain } from './settlementOrder.js'
+
 export const STATUS = {
   AUTO_ON: 'AUTO_ON',
   PENDING: 'PENDING',
@@ -115,8 +118,17 @@ export function buildSkillQueue({ blueSlots = [], yellowSlots = [], skillTemplat
       const card = slot.card
       if (!card) continue
       const characterName = `${card.className || ''} ${card.code || ''}`.trim()
-      const lists = [card.classSkills || [], card.personalSkills || [], card.noblePhantasms || []]
-      for (const list of lists) {
+      // 能力类别直接按卡面列表来源确定，供 5.2.2 能力结算链排序
+      // 从者卡：职介/保有技能 → 技能，宝具 → 宝具；御主卡：工坊 → 工房构件，礼装 → 礼装
+      const lists = [
+        [card.classSkills, '技能'],
+        [card.personalSkills, '技能'],
+        [card.noblePhantasms, '宝具'],
+        [card.workshops, '工房构件'],
+        [card.craftEssences, '礼装'],
+      ]
+      for (const [list, abilityKind] of lists) {
+        if (!Array.isArray(list)) continue
         for (const skill of list) {
           const skillName = skill.name || ''
           if (!skillName) continue
@@ -133,6 +145,11 @@ export function buildSkillQueue({ blueSlots = [], yellowSlots = [], skillTemplat
             characterId: card.id || null,
             characterName,
             skillName,
+            // 技能原文兜底用：卡片整卡原文，方便弹层在无模板时展示
+            cardRawText: card.rawText || '',
+            abilityKind,
+            skillType: template?.skillType || '',
+            npType: template?.npType || '',
             originalRank: skill.rank || '',
             effectiveRank: previous?.effectiveRank || skill.rank || '',
             phase,
@@ -205,7 +222,9 @@ export function applyQueueEffects({ queue = [], phaseKey = null } = {}) {
       continue
     }
 
-     for (const effect of effects) {
+    // 5.2.1 效果的结算链：同一技能内的效果按 轰击/即死→状态→属性→胜率→保底→魔力→文本 顺序处理
+    const orderedEffects = sortEffectsByEffectChain(effects)
+     for (const effect of orderedEffects) {
       const sidePrefix = item.side === 'blue' ? 'blue' : 'yellow'
       const targetSide = effect.target === 'enemy' ? getEnemySide(sidePrefix) : sidePrefix
       const value = resolveEffectValue(effect, item)

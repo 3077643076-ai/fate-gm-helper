@@ -24,6 +24,9 @@
           </label>
         </div>
         <div class="header-actions">
+          <button class="btn-secondary" type="button" @click="lookupOpen = true">
+            技能速查
+          </button>
           <button class="btn-secondary" type="button" @click="copyReviewSnapshot" :disabled="saving">
             复制复盘摘要
           </button>
@@ -90,6 +93,7 @@
               :selected-skill-id="selectedSkill?.id || ''"
               @select-skill="selectSkillQueueItem"
               @update-skill="updateSkillQueueItem"
+              @view-text="openSkillText"
             />
 
             <BattleStartPanel
@@ -168,6 +172,7 @@
               :warnings="phaseWarnings"
               :activated-summary="activatedTemplateSummary"
             />
+            <SettlementOrderPanel :queue="skillQueue" @view-skill="openSkillText" />
             <ReviewHistoryPanel
               :items="reviewSnapshots"
               :selected-id="selectedReviewId"
@@ -180,6 +185,11 @@
         </div>
         </main>
       </div>
+
+      <!-- 技能原文弹层：统计面板/速查弹层里点技能名后打开 -->
+      <SkillTextModal :open="textModalOpen" :skill="textModalSkill" @close="closeSkillText" />
+      <!-- 技能速查弹层：同时搜模板库和本战役角色卡 -->
+      <SkillLookupModal :open="lookupOpen" :campaign-id="selectedCampaignId" @close="lookupOpen = false" @view-skill="openSkillText" />
     </template>
   </section>
 </template>
@@ -229,6 +239,10 @@ import FinalCommandPanel from '../components/battle/FinalCommandPanel.vue'
 import FormationPanel from '../components/battle/FormationPanel.vue'
 import PhaseConfirmBar from '../components/battle/PhaseConfirmBar.vue'
 import MainPhasePanel from '../components/battle/MainPhasePanel.vue'
+// 发动统计（按人物分组 + 5.2 结算链排序）与技能速查/原文弹层
+import SettlementOrderPanel from '../components/battle/SettlementOrderPanel.vue'
+import SkillTextModal from '../components/battle/SkillTextModal.vue'
+import SkillLookupModal from '../components/battle/SkillLookupModal.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -307,6 +321,21 @@ const skillTemplates = ref([])
 const phaseState = reactive(createDefaultPhaseState())
 const skillQueue = ref([])
 const selectedSkillId = ref('')
+
+// 技能原文弹层 / 速查弹层的开关状态
+const textModalOpen = ref(false)
+const textModalSkill = ref(null)
+const lookupOpen = ref(false)
+
+function openSkillText(item) {
+  textModalSkill.value = item
+  textModalOpen.value = true
+}
+
+function closeSkillText() {
+  textModalOpen.value = false
+  textModalSkill.value = null
+}
 const manualCorrectionsByPhase = reactive({
   BATTLE_START: { blue: { stat: {}, winRate: 0, guarantee: 0, note: '' }, yellow: { stat: {}, winRate: 0, guarantee: 0, note: '' } },
   INITIAL: { blue: { stat: {}, winRate: 0, guarantee: 0, note: '' }, yellow: { stat: {}, winRate: 0, guarantee: 0, note: '' } },

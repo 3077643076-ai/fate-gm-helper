@@ -30,6 +30,8 @@ function normalizeSkillTemplatePayload(body) {
     name: cleanText(body.name),
     rank: cleanText(body.rank),
     skillType: cleanText(body.skillType),
+    // 宝具子类型（对人/对军/对城…），仅宝具类模板使用
+    npType: cleanText(body.npType),
     timing: cleanText(body.timing),
     positionLimit: cleanText(body.positionLimit),
     manaCost: Number(body.manaCost) || 0,
@@ -54,6 +56,7 @@ function formatSkillTemplateRow(row) {
     name: row.name,
     rank: row.rank,
     skillType: row.skill_type,
+    npType: row.np_type,
     timing: row.timing,
     positionLimit: row.position_limit,
     manaCost: row.mana_cost ?? 0,

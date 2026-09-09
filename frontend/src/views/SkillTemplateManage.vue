@@ -1,9 +1,13 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { createSkillTemplate, deleteSkillTemplate, listSkillTemplates, updateSkillTemplate } from '../services/skillTemplate'
+// 结算链常量：类型下拉的取值直接来自规则书 5.2.3 链，保证录入值可参与结算链排序
+import { SKILL_TYPE_CHAIN, NOBLE_PHANTASM_TYPE_CHAIN } from '../composables/settlementOrder'
 
 const timings = ['常驻', '随时', '战斗开始时', '初始工序', '主要工序', '最终工序']
 const positions = ['不限', '主力位', '辅助位', '支援位']
+// 技能类型下拉：规则书链上的 7 类 + 宝具 + 其他；旧数据的自定义值会由 typeOptions 自动追加
+const extraSkillTypes = ['宝具', '其他']
 const statKeys = [
   { key: 'strength', label: '筋力' },
   { key: 'endurance', label: '耐久' },
@@ -26,6 +30,8 @@ function emptyForm() {
     name: '',
     rank: '',
     skillType: '',
+    // 宝具子类型，仅 skillType 为宝具时使用
+    npType: '',
     timing: '战斗开始时',
     positionLimit: '不限',
     manaCost: 0,
@@ -47,6 +53,14 @@ function emptyForm() {
 const form = reactive(emptyForm())
 
 const selectedTemplate = computed(() => templates.value.find(t => t.id === editingId.value) || null)
+
+// 类型下拉选项：标准链 + 宝具/其他；旧模板的自由文本类型自动追加到"其他"后面，保证回显不丢
+const typeOptions = computed(() => {
+  const options = [...SKILL_TYPE_CHAIN, ...extraSkillTypes]
+  const current = form.skillType
+  if (current && !options.includes(current)) options.push(current)
+  return options
+})
 
 function resetForm() {
   Object.assign(form, emptyForm())
@@ -83,6 +97,7 @@ function editTemplate(template) {
     name: template.name || '',
     rank: template.rank || '',
     skillType: template.skillType || '',
+    npType: template.npType || '',
     timing: template.timing || '战斗开始时',
     positionLimit: template.positionLimit || '不限',
     manaCost: template.manaCost || 0,
@@ -106,6 +121,7 @@ function buildPayload() {
     name: form.name.trim(),
     rank: form.rank.trim(),
     skillType: form.skillType.trim(),
+    npType: form.skillType === '宝具' ? (form.npType || '') : '',
     timing: form.timing,
     positionLimit: form.positionLimit,
     manaCost: Number(form.manaCost) || 0,
@@ -220,7 +236,8 @@ onMounted(loadTemplates)
         <div class="form-grid">
           <label>技能名<input v-model="form.name" placeholder="例如：魔力放出" /></label>
           <label>等级<input v-model="form.rank" placeholder="A / B / EX" /></label>
-          <label>类型<input v-model="form.skillType" placeholder="固有 / 职阶 / 宝具" /></label>
+          <label>类型<select v-model="form.skillType"><option value="">不填</option><option v-for="type in typeOptions" :key="type" :value="type">{{ type }}</option></select></label>
+          <label v-if="form.skillType === '宝具'">宝具类型<select v-model="form.npType"><option value="">不填</option><option v-for="npType in NOBLE_PHANTASM_TYPE_CHAIN" :key="npType" :value="npType">{{ npType }}</option></select></label>
           <label>发动时机<select v-model="form.timing"><option v-for="timing in timings" :key="timing" :value="timing">{{ timing }}</option></select></label>
           <label>战斗位限制<select v-model="form.positionLimit"><option v-for="position in positions" :key="position" :value="position">{{ position }}</option></select></label>
           <label>消耗魔力<input v-model.number="form.manaCost" type="number" /></label>
@@ -261,6 +278,7 @@ onMounted(loadTemplates)
             <div class="template-name"><strong>{{ template.name }}</strong><span v-if="template.rank">{{ template.rank }}</span></div>
             <div class="template-meta">
               <span>{{ template.timing || '未填时机' }}</span>
+              <span v-if="template.skillType">{{ template.skillType }}{{ template.npType ? `·${template.npType}` : '' }}</span>
               <span>{{ template.positionLimit || '不限' }}</span>
               <span>魔力 {{ template.manaCost || 0 }}</span>
               <span v-if="template.manualJudgment">需手动裁决</span>

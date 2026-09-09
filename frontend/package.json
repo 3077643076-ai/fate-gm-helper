@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node src/composables/useBattlePhaseBoard.test.mjs && node src/composables/useBattleSideSlots.test.mjs && node src/composables/useBattleStatusEffects.test.mjs",
+    "test": "node src/composables/settlementOrder.test.mjs && node src/composables/useBattlePhaseBoard.test.mjs && node src/composables/useBattleSideSlots.test.mjs && node src/composables/useBattleStatusEffects.test.mjs",
     "electron": "electron .",
     "dist": "node ../tools/stage-backend.mjs && electron-builder --win portable"
   },

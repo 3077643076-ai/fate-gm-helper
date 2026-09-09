@@ -1,5 +1,37 @@
 # NOTES.md
 
+## 2026-09-09
+
+**战斗表结算链排序 + 发动统计 + 技能查文本/速查（GM 实测需求第一批）**
+- 需求来源：9-8 带团战斗结算实测，GM 需要：1) 统计每人发了什么技能/宝具
+  2) 按规则书 5.2 结算链排序 3) 点技能直接看原文 4) 王财/魔境抓的技能快速查询
+- 新增 frontend/src/composables/settlementOrder.js：5.2 六条链常量唯一数据源
+  （能力链/宝具类型链/技能类型链/等级链/时机链/效果链）+ 多级排序键
+  （能力→类型→等级→名字）；未知类型/等级排链尾并打标记提醒 GM 补模板；
+  "职阶=职介"、"对城宝具=对城"归一化；node --test 单测覆盖
+- 模板库 np_type 字段（宝具子类型）：db.js ensureColumns 自动加列，
+  normalizer/routes INSERT+UPDATE 同步；录入页 skillType 改标准化下拉
+  （职介/天赋/技艺/祝福/荣冠/兵器/魔术/宝具/其他，旧自由文本自动追加兼容），
+  选宝具时显示 npType 下拉（对人魔剑→…→对界 8 档）
+- buildSkillQueue 条目补 abilityKind（按卡面列表来源直接定，不再靠猜）、
+  skillType/npType（模板带入）、cardRawText（原文兜底）；御主卡工坊/礼装进队列
+- applyQueueEffects：同一技能内效果按 5.2.1 链排序处理展示
+  （轰击/即死→状态→属性→胜率→保底→魔力→文本），新增 kind
+  bombard_instant_death / status_effect（暂走需裁决分支）
+- 新组件：SettlementOrderPanel（侧栏，按人物分组统计已生效技能+组内按链排序，
+  可切全局平铺看结算顺序）、SkillTextModal（原文三级兜底：模板原文→条目全文→整卡原文）、
+  SkillLookupModal（头部"技能速查"按钮，同时搜模板库+本战役全部角色卡，纯查看不挂载）；
+  SkillQueuePanel 行内加"原文"按钮和类型徽章
+- **踩坑 1**：PowerShell 5.1 Invoke-RestMethod 发中文 JSON body 会编码成乱码，
+  冒烟测试必须用 node fetch（test/smoke-np-type.mjs，FATE_GM_SMOKE_BASE 可改地址）
+- **踩坑 2**：8100 被旧代码后端占着（PID 34600，昨日已记录），新代码测试请求
+  打到旧进程导致 np_type 一直是 NULL、报错还看不出原因——用 PORT=8101 起新进程
+  验证才通过。**用户重启后端后 np_type/新组件才生效**
+- 第二批待办：QQ 截图收集链路（玩家发 Excel 截图→Koishi 插件转发→后端转存本地
+  →视觉 API 只识别"技能名+等级"→模板库匹配带出原文→GM 页面确认挂角色）。
+  视觉 API 建议先智谱 glm-4v-flash（免费），SiliconFlow 备选，OpenAI 兼容可切换；
+  fate-actions 插件源码在服务器侧 Koishi 项目，本地仓库无 plugins 目录
+
 ## 2026-09-08（晚）
 
 **引擎 v0.5-B 完成：AI 进引擎框架当操作员（收行动工作流）+ 全量消息日志**

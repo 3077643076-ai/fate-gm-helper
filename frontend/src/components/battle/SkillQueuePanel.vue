@@ -7,7 +7,7 @@ defineProps({
   selectedSkillId: { type: String, default: '' },
 })
 
-const emit = defineEmits(['select-skill', 'update-skill'])
+const emit = defineEmits(['select-skill', 'update-skill', 'view-text'])
 
 const rankOptions = ['EX', 'A', 'B', 'C', 'D', 'E', '无效']
 const statOptions = [
@@ -53,8 +53,13 @@ function patchStatus(item, status) {
       <div class="skill-row-main">
         <strong>{{ item.skillName }}</strong>
         <span>{{ item.characterName }} · {{ item.positionLabel }}</span>
-        <small>原等级 {{ item.originalRank || '未填' }}</small>
+        <small>
+          原等级 {{ item.originalRank || '未填' }}
+          <template v-if="item.abilityKind"> · {{ item.abilityKind }}<template v-if="item.abilityKind === '宝具' && item.npType">·{{ item.npType }}</template><template v-else-if="item.skillType">·{{ item.skillType }}</template></template>
+        </small>
       </div>
+
+      <button type="button" class="view-text-btn" @click.stop="emit('view-text', item)">原文</button>
 
       <label>
         生效等级
@@ -206,6 +211,20 @@ function patchStatus(item, status) {
   color: var(--color-primary);
   background: #fff;
   cursor: pointer;
+}
+
+.view-text-btn {
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 0.3rem 0.6rem;
+  color: var(--color-primary);
+  background: #fff;
+  cursor: pointer;
+  font-size: 0.78rem;
+}
+
+.view-text-btn:hover {
+  background: #f3f6fb;
 }
 
 @media (max-width: 900px) {

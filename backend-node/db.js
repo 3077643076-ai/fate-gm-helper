@@ -307,6 +307,8 @@ function initSchema(db) {
     manual_judgment: 'INTEGER DEFAULT 0',
     source_book: 'TEXT',
     source_section: 'TEXT',
+    // 宝具子类型（对人/对军/对城…），用于 5.2.3.1 宝具类型结算链排序
+    np_type: 'TEXT',
   });
 }
 
