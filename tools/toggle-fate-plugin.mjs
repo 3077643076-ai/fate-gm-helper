@@ -17,9 +17,7 @@ const INSERT_BLOCK = [
   '- insert:',
   '    - id: fate-gm-tools',
   "      name: 'fate-gm-tools'",
-  '      config:',
-  "        dbPath: 'C:/Users/fan/Desktop/medev/继续完成/fate-gm-helper/backend-node/data/gm_helper.db'",
-  "        knowledgeDir: 'C:/Users/fan/Desktop/medev/继续完成/fate-gm-helper/knowledge'",
+  '      config: {}', // 空配置：插件按自身路径推导项目根，自动用本项目 backend-node/data 与 knowledge/
   MARK_END,
 ].join('\n')
 
