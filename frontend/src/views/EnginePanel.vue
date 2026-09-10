@@ -52,6 +52,13 @@ async function loadCampaigns() {
 function onCampaignChange() {
   localStorage.setItem('engine-campaign-id', campaignId.value ?? '')
   loadStatus()
+  loadActionSummary()
+}
+
+/** 回合/时段变化：状态与行动统计一起刷新 */
+async function reloadRoundScoped() {
+  await loadStatus()
+  await loadActionSummary()
 }
 
 async function loadStatus() {
@@ -260,6 +267,50 @@ async function remindMissing() {
   } finally { noticeLoading.value = false }
 }
 
+// ---------- 行动统计（一键统计提交 + 规范文本按结算链排序 + 一键催未交） ----------
+const actionSummary = ref(null)
+const summaryLoading = ref(false)
+
+async function loadActionSummary(withNotices = false) {
+  if (!campaignId.value) { log('请先选择战役', 'warn'); return }
+  await saveNapcatBase()
+  summaryLoading.value = true
+  try {
+    const qs = new URLSearchParams({
+      campaignId: campaignId.value, round: round.value, phase: phase.value,
+    })
+    // 公告状态要真连 NapCat：只在「一键统计」时查；打开面板的自动统计走纯本地库
+    if (withNotices) qs.set('napcatBase', napcatBase.value)
+    const r = await fetch(`/api/engine/actions/summary?${qs}`)
+    const body = await r.json()
+    if (!r.ok) { log('行动统计失败：' + body.error, 'error'); return }
+    actionSummary.value = body
+    const s = body.summary
+    const noticePart = s.groupsSubmitted != null
+      ? `${s.groupsSubmitted}/${s.groupsTotal} 组已交公告，未交 ${s.groupsMissing}`
+      : `公告未查（点一键统计带公告状态）`
+    log(`统计（第${s.round}天${s.phase}）：${noticePart}；登记 ${s.actionsActive} 动${s.actionsVoid ? `（作废 ${s.actionsVoid}）` : ''}；单位 ${s.unitsRegistered}/${s.unitsExpected}${s.extraUnits.length ? `＋场外 ${s.extraUnits.join('、')}` : ''}；需裁决 ${s.pendingRulings}`,
+        (s.groupsMissing || s.unitsRegistered < s.unitsExpected || s.pendingRulings) ? 'warn' : 'ok')
+  } finally { summaryLoading.value = false }
+}
+
+async function remindMissingAuto() {
+  if (!campaignId.value) { log('请先选择战役', 'warn'); return }
+  await saveNapcatBase()
+  summaryLoading.value = true
+  try {
+    const r = await fetch('/api/engine/notices/remind-missing', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ campaignId: campaignId.value, napcatBase: napcatBase.value, round: round.value, phase: phase.value }),
+    })
+    const body = await r.json()
+    if (!r.ok) { log('催办失败：' + body.error, 'error'); return }
+    if (!body.missingCount) { log('各私组都已交公告，无需催办', 'ok'); return }
+    log(`催办完成：${body.missingCount} 组未交（${(body.missingClasses ?? []).join('、')}），已发提醒 ${(body.sent ?? []).length} 组${(body.failed ?? []).length ? `，失败 ${(body.failed ?? []).length}` : ''}`, body.ok ? 'ok' : 'warn')
+    await loadActionSummary(true)
+  } finally { summaryLoading.value = false }
+}
+
 // ---------- AI 助手（v0.5-B：程序骨架 + LLM 填空，自动收行动） ----------
 // AI 只做：查公告 → 标准化登记 → LLM 兜底解析 → 私组确认回执 → 催未交
 // 不做：推进结算（改账本的操作永远 GM 手按）；外发消息强制过出口闸（真名→代号）
@@ -421,6 +472,7 @@ onMounted(async () => {
   await loadCampaigns()
   await loadGroups()
   await loadStatus()
+  await loadActionSummary()
   await loadAgentConfig()
   await loadAgentStatus()
   if (battleId.value) await loadBattle()
@@ -443,10 +495,10 @@ onMounted(async () => {
             <option v-for="c in campaigns" :key="c.id" :value="c.id">{{ c.name }}</option>
           </select>
         </label>
-        <label>回合 <input type="number" min="1" max="14" v-model.number="round" @change="loadStatus" /></label>
+        <label>回合 <input type="number" min="1" max="14" v-model.number="round" @change="reloadRoundScoped" /></label>
         <label>
           时段
-          <select v-model="phase" @change="loadStatus">
+          <select v-model="phase" @change="reloadRoundScoped">
             <option>昼</option><option>夜</option>
           </select>
         </label>
@@ -499,8 +551,40 @@ onMounted(async () => {
         </div>
       </section>
 
-      <!-- 右：公告检查 / 需裁决 / 判定单 / 待办 -->
+      <!-- 右：行动统计 / 公告检查 / 需裁决 / 判定单 / 待办 -->
       <aside class="eng-col eng-col-side">
+        <h2>行动统计 <em v-if="actionSummary">第{{ actionSummary.round }}天{{ actionSummary.phase }} · {{ actionSummary.summary.actionsActive }} 动</em></h2>
+        <div class="notice-btns">
+          <button class="eng-btn eng-btn-primary" :disabled="summaryLoading || !campaignId" @click="loadActionSummary(true)">{{ summaryLoading ? '统计中…' : '一键统计' }}</button>
+          <button class="eng-btn" :disabled="summaryLoading || !campaignId" @click="remindMissingAuto">一键催未交</button>
+        </div>
+        <template v-if="actionSummary">
+          <p class="stat-chips">
+            <span :class="{ bad: actionSummary.summary.groupsMissing }">已交 {{ actionSummary.summary.groupsSubmitted ?? '?' }}/{{ actionSummary.summary.groupsTotal }} 组</span>
+            <span>登记 {{ actionSummary.summary.actionsActive }} 动</span>
+            <span v-if="actionSummary.summary.actionsVoid">作废 {{ actionSummary.summary.actionsVoid }}</span>
+            <span :class="{ bad: actionSummary.summary.unitsRegistered < actionSummary.summary.unitsExpected }">单位 {{ actionSummary.summary.unitsRegistered }}/{{ actionSummary.summary.unitsExpected }}</span>
+            <span v-if="actionSummary.summary.pendingRulings" class="bad">需裁决 {{ actionSummary.summary.pendingRulings }}</span>
+          </p>
+          <div v-for="g in actionSummary.groups" :key="'g' + g.groupId" class="notice-row"
+               :class="g.noticeError ? 'fail' : (g.hasNotice == null ? '' : (g.hasNotice ? (g.confirmed ? 'ok' : '') : 'miss'))">
+            <span>{{ g.class || g.groupName || g.groupId }}</span>
+            <span class="notice-state">
+              {{ g.noticeError ? '读取失败' : (g.hasNotice == null ? '—' : (g.hasNotice ? (g.confirmed ? '已确认' : '已交') : '未交')) }}<template v-if="g.actionCount"> · {{ g.actionCount }} 动</template>
+            </span>
+          </div>
+          <p v-if="actionSummary.noticesError" class="empty">公告状态：{{ actionSummary.noticesError }}</p>
+          <p class="stat-hint">规范文本按结算链排序（=引擎结算顺序，悬停看玩家原文）：</p>
+          <div v-for="sec in actionSummary.chainSections" :key="'s' + sec.rank" class="act-group">
+            <h3>{{ sec.chain }}</h3>
+            <div v-for="a in sec.actions" :key="a.id" class="act-row" :class="'st-' + a.status" :title="a.rawText ?? ''">
+              <span class="act-unit">{{ a.unitKey }}<template v-if="a.slot > 1">·{{ a.slot }}动</template></span>
+              <span class="act-note">{{ a.standard }}</span>
+            </div>
+          </div>
+          <p v-if="!actionSummary.actions.length" class="empty-block small">本时段还没有登记行动——用 AI 助手「一键收行动」或中栏手动登记。</p>
+        </template>
+
         <h2>公告检查 <em>{{ noticeCheck ? `${noticeCheck.summary.submitted}/${noticeCheck.summary.total}` : '' }}</em></h2>
         <div class="notice-form">
           <input v-model="napcatBase" placeholder="NapCat HTTP 地址" @change="saveNapcatBase" />
@@ -843,6 +927,10 @@ onMounted(async () => {
 .notice-row.ok .notice-state { color: #5dd39e; }
 .notice-row.miss .notice-state { color: #ff5c5c; font-weight: 700; }
 .notice-row.fail .notice-state { color: #9a9db0; }
+/* 行动统计 */
+.stat-chips { display: flex; flex-wrap: wrap; gap: 4px 10px; margin: 6px 0; font-size: 12px; color: #9a9db0; }
+.stat-chips .bad { color: #ff8a2a; font-weight: 700; }
+.stat-hint { margin: 8px 0 4px; font-size: 11px; color: #565a6e; }
 .group-add { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
 .group-add input, .group-add select {
   background: #121317; color: #e8e6e3; border: 1px solid #34374a; padding: 4px 6px; font-size: 12px;

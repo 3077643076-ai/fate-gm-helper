@@ -2,9 +2,9 @@
 // 消费方：fate-actions 插件（QQ 指令）/ 网页引擎面板（规划中）/ 离线回放
 import { Router } from 'express'
 import { openEngineDb } from './store.mjs'
-import { parseAnnouncement, standardizeAnnouncement, normalizeLeyline } from './parser.mjs'
+import { parseAnnouncement, standardizeAnnouncement, normalizeLeyline, formatActionStandard } from './parser.mjs'
 import { parseWithLLM } from './llm.mjs'
-import { settleRound } from './settler.mjs'
+import { settleRound, chainRank } from './settler.mjs'
 import { fetchGroupNotices, sendGroupMsg } from './qqport.mjs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -224,12 +224,10 @@ router.delete('/groups/:id', (req, res) => {
 
 // ---------- 公告检查：一键读取各私组公告，标出未交行动的组 ----------
 // 交了=群里有非空公告（最新一条含"机器人已确认"记为已确认）；没交=无公告或正文为空
-router.post('/notices/check', async (req, res) => {
-  const { campaignId, napcatBase } = req.body ?? {}
-  if (!requireCampaignId(campaignId)) return res.status(400).json({ error: '需要 campaignId' })
-  if (!napcatBase) return res.status(400).json({ error: '需要 napcatBase（NapCat HTTP 地址，如 http://127.0.0.1:3000）' })
+/** 读各私组群公告状态（公告检查 / 行动统计 / 催未交 三处共用） */
+async function checkPrivateNotices(campaignId, napcatBase) {
   const groups = db.prepare(`SELECT group_id, group_name, class FROM engine_group_binding WHERE campaign_id = ? AND kind = 'private' ORDER BY class`).all(campaignId)
-  if (!groups.length) return res.status(400).json({ error: '本战役没有登记私组群映射（先在面板配置群映射）' })
+  if (!groups.length) return { error: '本战役没有登记私组群映射（先在面板配置群映射）' }
 
   const checked = []
   const failed = []
@@ -252,7 +250,17 @@ router.post('/notices/check', async (req, res) => {
   }
 
   const missing = checked.filter(c => !c.hasNotice).map(c => c.class)
-  res.json({ checked, missing, failed, summary: { total: groups.length, submitted: checked.filter(c => c.hasNotice).length, missing: missing.length, failed: failed.length } })
+  return { checked, failed, missing, summary: { total: groups.length, submitted: checked.filter(c => c.hasNotice).length, missing: missing.length, failed: failed.length } }
+}
+
+router.post('/notices/check', async (req, res) => {
+  const { campaignId, napcatBase } = req.body ?? {}
+  if (!requireCampaignId(campaignId)) return res.status(400).json({ error: '需要 campaignId' })
+  if (!napcatBase) return res.status(400).json({ error: '需要 napcatBase（NapCat HTTP 地址，如 http://127.0.0.1:3000）' })
+
+  const result = await checkPrivateNotices(campaignId, napcatBase)
+  if (result.error) return res.status(400).json({ error: result.error })
+  res.json(result)
 })
 
 // ---------- 一键提醒：向未交行动的私组发提醒消息 ----------
@@ -274,6 +282,177 @@ router.post('/notices/remind', async (req, res) => {
     }
   }
   res.json({ ok: failed.length === 0, sent, failed })
+})
+
+// ---------- 一键催未交：自动检查各私组公告，向未交的组发提醒（检查+催办一步完成） ----------
+router.post('/notices/remind-missing', async (req, res) => {
+  const { campaignId, napcatBase, round, phase, customText } = req.body ?? {}
+  if (!requireCampaignId(campaignId)) return res.status(400).json({ error: '需要 campaignId' })
+  if (!napcatBase) return res.status(400).json({ error: '需要 napcatBase' })
+
+  const check = await checkPrivateNotices(campaignId, napcatBase)
+  if (check.error) return res.status(400).json({ error: check.error })
+
+  const missing = check.checked.filter(c => !c.hasNotice).map(c => ({ groupId: c.groupId, class: c.class }))
+  const defaultText = `【行动提醒】第${round ?? '?'}天 ${phase ?? ''}行动提交：请把本组行动写进本群公告，并发 .确认行动 确认。`
+  const sent = []
+  const failed = []
+  for (const g of missing) {
+    try {
+      await sendGroupMsg(napcatBase, g.groupId, customText ?? defaultText)
+      sent.push(g.class ?? g.groupId)
+    } catch (e) {
+      failed.push({ class: g.class ?? g.groupId, error: e.message })
+    }
+  }
+  res.json({ ok: failed.length === 0, checkedTotal: check.checked.length, missingCount: missing.length, missingClasses: missing.map(g => g.class), sent, failed })
+})
+
+// ---------- 行动统计：现有提交汇总 + 规范文本按结算链排序（GM 结算前总览） ----------
+// GET /actions/summary?campaignId&round&phase[&napcatBase]
+// - 本地库视角：已登记行动（任意来源：面板/QQ 插件/AI 收行动）按结算链排序 + 单位/职阶汇总
+// - napcatBase 可选：附带各私组公告状态（已交/已确认/未交/读取失败），统计+催办判定一次完成
+// 排序口径与 settler 结算完全一致（chainRank 单一来源），GM 看到的顺序=引擎将结算的顺序
+router.get('/actions/summary', async (req, res) => {
+  const campaignId = requireCampaignId(req.query.campaignId)
+  if (!campaignId) return res.status(400).json({ error: '需要 campaignId' })
+  const round = Number(req.query.round) || currentRound(campaignId)
+  const phase = req.query.phase || '昼'
+  const napcatBase = req.query.napcatBase || null
+
+  const ruleRows = db.prepare(`SELECT * FROM action_rules`).all()
+  const rules = Object.fromEntries(ruleRows.map(r => [r.action_key, r]))
+  const unitRows = db.prepare(`SELECT unit_key, class, side, code, missing FROM unit_registry`).all()
+  const unitMap = Object.fromEntries(unitRows.map(u => [u.unit_key, u]))
+
+  const rows = db.prepare(
+    `SELECT id, unit_key, slot, action_key, target, variant, raw_text, status, settle_note, created_at
+       FROM engine_actions
+      WHERE campaign_id = ? AND round = ? AND phase = ?
+      ORDER BY id`
+  ).all(campaignId, round, phase)
+
+  const actions = rows.map(row => {
+    const rule = rules[row.action_key] ?? null
+    const unit = unitMap[row.unit_key] ?? null
+    return {
+      id: row.id,
+      unitKey: row.unit_key,
+      unitCode: unit?.code ?? null,
+      class: unit?.class ?? null,
+      slot: row.slot,
+      actionKey: row.action_key,
+      target: row.target,
+      variant: row.variant,
+      status: row.status,
+      settleNote: row.settle_note,
+      createdAt: row.created_at,
+      chain: rule?.phase ?? null,
+      rank: chainRank(row.action_key, rule?.phase),
+      standard: formatActionStandard({ unitKey: row.unit_key, actionKey: row.action_key, target: row.target, variant: row.variant }, rule, { round, phase }),
+      rawText: row.raw_text,
+      rate: rule?.base_rate ?? null,
+      dayBonus: rule?.day_bonus ?? 0,
+      nightBonus: rule?.night_bonus ?? 0,
+      manaCost: rule?.mana_cost ?? 0,
+      manaGain: rule?.mana_gain ?? 0,
+      costsAction: rule?.costs_action ?? null,
+    }
+  }).sort((a, b) => a.rank - b.rank || a.slot - b.slot || a.unitKey.localeCompare(b.unitKey, 'zh') || a.id - b.id)
+
+  // 结算链分段（同 rank 归一段；段内保持排序）
+  const chainSections = []
+  for (const a of actions) {
+    let sec = chainSections.find(s => s.rank === a.rank)
+    if (!sec) {
+      sec = { rank: a.rank, chain: a.chain ?? (a.rank === 90 ? '灵脉行动' : '未归类'), actions: [] }
+      chainSections.push(sec)
+    }
+    sec.actions.push(a)
+  }
+  chainSections.sort((x, y) => x.rank - y.rank)
+
+  // 单位汇总 + 应交单位（私组职阶 × 从/御 且在单位注册表中的键）
+  const byUnit = {}
+  for (const a of actions) {
+    const u = byUnit[a.unitKey] ??= { unitKey: a.unitKey, class: a.class, code: a.unitCode, total: 0, active: 0, void: 0 }
+    u.total++
+    if (a.status === 'void') u.void++
+    else u.active++
+  }
+  const groupRows = db.prepare(`SELECT group_id, group_name, class FROM engine_group_binding WHERE campaign_id = ? AND kind = 'private' ORDER BY class`).all(campaignId)
+  const expectedUnits = []
+  for (const g of groupRows) {
+    if (!g.class) continue
+    for (const suffix of ['从', '御']) {
+      const key = `${g.class}${suffix}`
+      if (unitMap[key] && !expectedUnits.includes(key)) expectedUnits.push(key)
+    }
+  }
+
+  // 职阶聚合（行动数落职阶，和私组公告状态对齐展示）
+  const byClass = {}
+  for (const a of actions) {
+    if (a.status === 'void') continue
+    const cls = a.class ?? a.unitKey.replace(/(从|御)$/, '')
+    const stat = byClass[cls] ??= { actionCount: 0, units: [] }
+    stat.actionCount++
+    if (!stat.units.includes(a.unitKey)) stat.units.push(a.unitKey)
+  }
+
+  // 附带各私组公告状态（可选）
+  let notices = null
+  let noticesError = null
+  if (napcatBase) {
+    const check = await checkPrivateNotices(campaignId, napcatBase)
+    if (check.error) noticesError = check.error
+    else notices = check
+  }
+
+  const groups = groupRows.map(g => {
+    const stat = byClass[g.class] ?? { actionCount: 0, units: [] }
+    const notice = notices?.checked.find(c => c.class === g.class) ?? null
+    return {
+      class: g.class,
+      groupId: g.group_id,
+      groupName: g.group_name,
+      actionCount: stat.actionCount,
+      units: stat.units,
+      hasNotice: notice?.hasNotice ?? null,
+      confirmed: notice?.confirmed ?? null,
+      latestText: notice?.latestText ?? '',
+      pubTime: notice?.pubTime ?? '',
+      noticeError: notices?.failed.find(f => f.class === g.class)?.error ?? null,
+    }
+  })
+
+  const activeActions = actions.filter(a => a.status !== 'void')
+  res.json({
+    round,
+    phase,
+    summary: {
+      groupsTotal: groupRows.length,
+      groupsSubmitted: notices ? notices.summary.submitted : null,
+      groupsMissing: notices ? notices.summary.missing : null,
+      groupsFailed: notices?.summary.failed ?? 0,
+      unitsExpected: expectedUnits.length,
+      unitsRegistered: expectedUnits.filter(k => (byUnit[k]?.active ?? 0) > 0).length,
+      extraUnits: Object.keys(byUnit).filter(k => !expectedUnits.includes(k)),
+      actionsTotal: actions.length,
+      actionsActive: activeActions.length,
+      actionsVoid: actions.length - activeActions.length,
+      pendingRulings: db.prepare(
+        `SELECT COUNT(*) AS n FROM engine_pending_ruling WHERE campaign_id = ? AND status = 'open' AND round = ? AND phase = ?`
+      ).get(campaignId, round, phase).n,
+    },
+    expectedUnits,
+    units: Object.values(byUnit).sort((a, b) => a.unitKey.localeCompare(b.unitKey, 'zh')),
+    groups,
+    chainSections,
+    actions,
+    notices,
+    noticesError,
+  })
 })
 
 export default router

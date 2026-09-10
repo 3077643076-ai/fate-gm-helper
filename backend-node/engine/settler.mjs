@@ -9,8 +9,9 @@ import { fileURLToPath } from 'node:url'
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 
 // 结算链顺序（判例口径：机动-魂食-干涉-解放-制造-信息-休整-摧毁工房）
-const CHAIN_ORDER = ['机动', '魂食', '干涉', '解放', '制造', '信息', '休整', '摧毁工房']
-function chainRank(actionKey, phase) {
+// 导出给 router 的行动统计接口复用——排序口径必须与结算完全一致，只有这一份
+export const CHAIN_ORDER = ['机动', '魂食', '干涉', '解放', '制造', '信息', '休整', '摧毁工房']
+export function chainRank(actionKey, phase) {
   if (phase === '灵脉行动') return 90 // 奏乐/征兵/托孤等灵脉行动：行动执行时判定，链尾统一处理
   const idx = CHAIN_ORDER.indexOf(actionKey)
   return idx === -1 ? 50 : idx * 10

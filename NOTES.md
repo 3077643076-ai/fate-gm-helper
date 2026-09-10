@@ -1,5 +1,33 @@
 # NOTES.md
 
+## 2026-09-10
+
+**行动统计完成：一键统计提交 + 一键催未交 + 规范文本按结算链排序（面板 + CLI）**
+- 背景：出差期先磨工具，第一件=「自动统计行动」：不写字也能看清谁交了、交了几动、按什么顺序结算
+- 后端新增 `GET /api/engine/actions/summary`：本地库视角一次给全——规范文本行 +
+  结算链排序 + 单位/职阶汇总 + 应交/已交单位（私组职阶×从御 ∩ unit_registry）+ 需裁决数；
+  可选 `napcatBase` 时附带各私组公告状态（已交/已确认/未交/读取失败）
+- **排序口径与结算完全一致**：导出 settler 的 chainRank（CHAIN_ORDER 单一来源），
+  面板看到的顺序 = 引擎将结算的顺序（段内 一动→二动→单位键稳定序），
+  杜绝"看到一套、结算另一套"
+- 后端新增 `POST /api/engine/notices/remind-missing`：检查+催办一步完成（只催未交的组）
+- 重构：`/notices/check` 的私组遍历抽成 `checkPrivateNotices`（check/summary/催办三处共用）；
+  读不到≠未交：failed 与 missing 分开，避免 NapCat 一挂就误催全团
+- 面板右栏新增「行动统计」区：打开面板自动统计（纯本地库，不碰 QQ）；一键统计=带公告状态；
+  一键催未交；职阶行显示公告状态+行动数；链段内列规范文本行（悬停看玩家原文，void 置灰）
+- 附带修复：`router.mjs` 用了 `formatActionStandard` 却从未导入——`/standardize` 的 LLM
+  兜底分支一直会 ReferenceError（无测试覆盖故未暴露），已补导入并纳入测试
+- 新增后端工具 `engine/summary-report.mjs`：CLI 打印某战役/回合/时段的排序后行动单（只读）
+- 测试：`engine/e2e-summary.mjs` **33/33 全绿**（临时库自建自清；覆盖排序/段序/void 剔除/
+  多动/公告容错/参数校验/只读性）；`e2e-agent` 22/22 回归通过；前端 vite build 通过；
+  Edge 无头实测面板渲染：链段顺序=机动→魂食→制造→信息→休整，规范文本/作废置灰/·2动 均正确
+- **发现（待 GM 处理）**：本机 `backend-node/data/gm_helper.db` 只有 M1 期引擎表
+  （engine_actions 等），缺 `action_rules` / `unit_registry` / `alias_registry` /
+  `engine_group_binding` 数据——三国杯的口径/单位/私组群映射不在这个库里，
+  所以本机面板统计会显示 0 应交单位。正好印证待办里的「口径/别名导出导入 API」：
+  开团前需要把 24 条口径、单位映射、私组群映射导回引擎库
+- 下一步：真实带团试跑「一键统计+催未交」；口径/别名导出导入；M2 灵脉效果全录
+
 ## 2026-09-08（晚）
 
 **引擎 v0.5-B 完成：AI 进引擎框架当操作员（收行动工作流）+ 全量消息日志**
