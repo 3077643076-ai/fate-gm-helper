@@ -1,5 +1,28 @@
 # NOTES.md
 
+## 2026-09-11（二）
+
+**前端改造成 MAA 风格外壳：左侧图标导航 + 四个横排功能页**
+- GM 定调：不要散页面，要 MAA 那种简洁程序——战役处理/战斗/设置/小工具
+- `App.vue` 重写为外壳：92px 左侧图标栏（SVG 线稿图标：清单/双剑/齿轮/扳手），
+  深色主题（#14151a 底 #1c1e26 栏 #5a9bd8 强调），NavBar/页脚退役
+- 新路由：`/campaign`（战役处理=原引擎面板，内容未动）、`/battle`（战斗）、
+  `/settings`（设置）、`/tools`（小工具）；`/` → `/campaign`；`/engine` → 兼容跳转
+- **战斗页**（新 `BattleHub.vue`）：选战役+回合时段灵脉+双方主/辅位（单位下拉来自
+  单位注册表）→ 创建并直接跳战斗表；下方战斗记录列表（状态中文化+胜率+打开）
+- **设置页**（新 `SettingsPage.vue`）：AI 助手配置（NapCat 地址/定时/LLM 开关/预算，
+  PUT agent/config）+ 群映射 CRUD + 行动口径表 + 单位注册表（缺卡标红）+
+  假 NapCat 本地测试说明卡
+- **小工具页**（新 `ToolsPage.vue`）：角色卡/技能模板/技能记录/规则顾问/旧流程页
+  卡片入口 + 命令行速查（mock-napcat/summary-report/seed/backup）
+- 后端补三个只读端点：`GET /api/engine/rules`（口径表）、`GET /api/engine/units`
+  （单位注册表联 character_card）、`GET /api/engine/battles?campaignId=`（战斗列表）
+- Home.vue 不再挂路由（文件保留）；旧页面（旧控制台/旧战斗表等）路由不变，
+  从小工具/战斗入口进，壳内高亮归属
+- 验证：vite build OK；Edge 无头断言 /、/battle、/settings 关键内容全过
+- 待办（GM 未拍板）：介入替换自动化（replaced 状态+slot 补位+已介入校验，
+  三入口同 POST /actions 一处生效）；「已确认」回写仍无写入方
+
 ## 2026-09-11
 
 **离线测试环境备齐：假 NapCat + 引擎旧表迁移 + 公告幂等补漏（三连修）**

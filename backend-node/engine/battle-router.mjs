@@ -10,6 +10,16 @@ const db = new DatabaseSync(process.env.FATE_GM_DB_PATH || join(root, 'backend-n
 
 const router = Router()
 
+// 战斗列表（按战役，新→旧，最多 50 场）
+router.get('/battles', (req, res) => {
+  const campaignId = Number(req.query.campaignId)
+  if (!requireCampaignIdCompat(campaignId)) return res.status(400).json({ error: '需要 campaignId' })
+  const battles = db.prepare(`
+    SELECT id, campaign_id, round, phase, leyline, status, win_rate, result, created_at
+      FROM engine_battles WHERE campaign_id = ? ORDER BY id DESC LIMIT 50`).all(campaignId)
+  res.json({ battles })
+})
+
 // 创建战斗
 router.post('/battles', (req, res) => {
   const { campaignId, round, phase, leyline, width, blue, yellow, attacker } = req.body ?? {}

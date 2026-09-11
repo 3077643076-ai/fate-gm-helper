@@ -53,6 +53,26 @@ router.get('/status', (req, res) => {
   })
 })
 
+// ---------- 口径表（只读，设置页展示） ----------
+router.get('/rules', (_req, res) => {
+  const rules = db.prepare(`
+    SELECT action_key, who, phase, base_rate, rate_formula, day_bonus, night_bonus,
+           costs_action, mana_cost, mana_gain, limit_per, effect_text
+      FROM action_rules ORDER BY phase, action_key`).all()
+  res.json({ rules })
+})
+
+// ---------- 单位注册表（只读，设置页展示 + 战斗页选人） ----------
+router.get('/units', (_req, res) => {
+  const units = db.prepare(`
+    SELECT u.unit_key, u.class, u.side, u.code, u.missing,
+           c.code AS card_code, c.id AS card_id
+      FROM unit_registry u
+      LEFT JOIN character_card c ON c.id = u.card_id
+     ORDER BY u.class, u.side, u.unit_key`).all()
+  res.json({ units })
+})
+
 // ---------- 登记行动：文本 → 多行动解析（切分器+别名归一） → 逐条入库（失败片段进需裁决） ----------
 router.post('/actions', (req, res) => {
   const { campaignId, round, phase = '昼', unitKey, text } = req.body ?? {}
