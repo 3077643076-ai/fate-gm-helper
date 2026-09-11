@@ -10,12 +10,14 @@ import EnginePanel from '../views/EnginePanel.vue'
 import BattleHub from '../views/BattleHub.vue'
 import SettingsPage from '../views/SettingsPage.vue'
 import ToolsPage from '../views/ToolsPage.vue'
+import ActionStatsPage from '../views/ActionStatsPage.vue'
 
 const routes = [
   { path: '/', redirect: '/campaign' },
   { path: '/campaign', name: 'campaign', component: EnginePanel },
   { path: '/engine', redirect: '/campaign' }, // 旧路径兼容
   { path: '/battle', name: 'battle', component: BattleHub },
+  { path: '/action-stats', name: 'action-stats', component: ActionStatsPage },
   { path: '/settings', name: 'settings', component: SettingsPage },
   { path: '/tools', name: 'tools', component: ToolsPage },
   { path: '/engine-battle/:battleId?', name: 'engine-battle', component: EngineBattleSheet },
