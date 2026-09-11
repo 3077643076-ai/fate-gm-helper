@@ -2,6 +2,7 @@
 // 引擎控制台（MAA 风格深色作战面板）
 // 数据源：/api/engine/*（状态/登记/推进/裁决/判定单）
 import { ref, computed, onMounted, nextTick } from 'vue'
+import { scrub } from '../privacy'
 
 // ---------- 状态 ----------
 // 引擎是多战役通用：战役从下拉选择（localStorage 记住），不写死任何杯
@@ -577,7 +578,7 @@ onMounted(async () => {
           <p class="stat-hint">规范文本按结算链排序（=引擎结算顺序，悬停看玩家原文）：</p>
           <div v-for="sec in actionSummary.chainSections" :key="'s' + sec.rank" class="act-group">
             <h3>{{ sec.chain }}</h3>
-            <div v-for="a in sec.actions" :key="a.id" class="act-row" :class="'st-' + a.status" :title="a.rawText ?? ''">
+            <div v-for="a in sec.actions" :key="a.id" class="act-row" :class="'st-' + a.status" :title="scrub(a.rawText) ?? ''">
               <span class="act-unit">{{ a.unitKey }}<template v-if="a.slot > 1">·{{ a.slot }}动</template></span>
               <span class="act-note">{{ a.standard }}</span>
             </div>
@@ -745,7 +746,7 @@ onMounted(async () => {
 
         <div v-if="!(status?.pendingRulings?.length)" class="empty-block small">无待裁决事项</div>
         <div v-for="r in status?.pendingRulings ?? []" :key="r.id" class="ruling">
-          <p class="ruling-ctx">#{{ r.id }} {{ r.context }}</p>
+          <p class="ruling-ctx">#{{ r.id }} {{ scrub(r.context) }}</p>
           <div class="ruling-form">
             <input v-model="rulingInput[r.id]" placeholder="裁决处置…" @keyup.enter="resolveRuling(r)" />
             <button class="eng-btn" @click="resolveRuling(r)">裁决</button>

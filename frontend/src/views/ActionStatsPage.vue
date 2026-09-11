@@ -5,6 +5,7 @@
 //   排序：链位 rank → slot → 单位（引擎结算顺序=页面显示顺序）
 import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
+import { scrub } from '../privacy'
 
 const route = useRoute()
 const campaigns = ref([])
@@ -192,7 +193,7 @@ onMounted(async () => {
               <tr :class="{ 'void-row': a.status === 'void' }">
                 <td class="dim">{{ a.no }}</td>
                 <td class="mono">{{ a.unitKey }}<span v-if="a.slot > 1" class="slot">·{{ a.slot }}动</span></td>
-                <td class="std" :title="`原文：${a.rawText || '—'}`">{{ a.standard }}</td>
+                <td class="std" :title="`原文：${scrub(a.rawText) || '—'}`">{{ a.standard }}</td>
                 <td class="dim">{{ fmtRate(a) }}</td>
                 <td class="dim">{{ fmtMana(a) }}</td>
                 <td><span class="badge" :class="statusClass(a.status)">{{ STATUS_TEXT[a.status] ?? a.status }}</span></td>

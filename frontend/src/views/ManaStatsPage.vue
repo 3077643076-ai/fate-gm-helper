@@ -4,6 +4,7 @@
 //   战斗增减未计入（战斗魔力结算接入后自动带上）；转让等手动调整看差异列人工核对
 import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
+import { scrubName } from '../privacy'
 
 const route = useRoute()
 const campaigns = ref([])
@@ -105,7 +106,7 @@ onMounted(async () => {
           <tbody>
             <tr v-for="r in report.rows" :key="(r.unitKey ?? '卡') + (r.cardId ?? '')">
               <td class="mono">{{ r.unitKey ?? '—' }}<span v-if="r.missing" class="badge bad">缺卡</span></td>
-              <td>{{ r.cardCode ?? '—' }}</td>
+              <td>{{ scrubName(r.cardCode, r.unitKey) }}</td>
               <td class="dim">{{ r.manaLimit ?? '—' }}</td>
               <td>{{ r.prevMana ?? '—' }}</td>
               <td :title="tipBreakdown(r)" class="delta">{{ fmtDelta(r) }}<span v-if="r.hasUnsettled" class="badge warn">未结算</span></td>

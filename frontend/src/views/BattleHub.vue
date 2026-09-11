@@ -126,25 +126,25 @@ watch(campaignId, (v) => { localStorage.setItem('hub-campaign-id', v ?? ''); loa
         <label>蓝方主力
           <select v-model="form.blueMain">
             <option value="" disabled>选单位</option>
-            <option v-for="u in units" :key="u.unit_key" :value="u.unit_key">{{ u.unit_key }}（{{ u.card_code ?? u.code ?? '?' }}）</option>
+            <option v-for="u in units" :key="u.unit_key" :value="u.unit_key">{{ u.unit_key }}</option>
           </select>
         </label>
         <label>蓝方辅助
           <select v-model="form.blueAssist">
             <option value="">无</option>
-            <option v-for="u in units" :key="u.unit_key" :value="u.unit_key">{{ u.unit_key }}（{{ u.card_code ?? u.code ?? '?' }}）</option>
+            <option v-for="u in units" :key="u.unit_key" :value="u.unit_key">{{ u.unit_key }}</option>
           </select>
         </label>
         <label>黄方主力
           <select v-model="form.yellowMain">
             <option value="" disabled>选单位</option>
-            <option v-for="u in units" :key="u.unit_key" :value="u.unit_key">{{ u.unit_key }}（{{ u.card_code ?? u.code ?? '?' }}）</option>
+            <option v-for="u in units" :key="u.unit_key" :value="u.unit_key">{{ u.unit_key }}</option>
           </select>
         </label>
         <label>黄方辅助
           <select v-model="form.yellowAssist">
             <option value="">无</option>
-            <option v-for="u in units" :key="u.unit_key" :value="u.unit_key">{{ u.unit_key }}（{{ u.card_code ?? u.code ?? '?' }}）</option>
+            <option v-for="u in units" :key="u.unit_key" :value="u.unit_key">{{ u.unit_key }}</option>
           </select>
         </label>
         <button class="btn-primary" :disabled="busy" @click="createBattle">创建并进入</button>

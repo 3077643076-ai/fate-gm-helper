@@ -1,5 +1,26 @@
 # NOTES.md
 
+## 2026-09-11（六）
+
+**全站真名隐藏（隐私层）+ 双击启动器**
+- GM 反馈：页面全在显示真名（张角/司马师…），要求全站代号——真名猜测是核心机制，
+  GM 屏幕被瞄到=泄密
+- **隐私层** `frontend/src/privacy.js`：词典来自 `GET /api/engine/privacy/lexicon`
+  （复用 QQ 出口闸 loadGateLexicon：unit_registry.code + character_card.code → 单位键，
+  长名优先），展示文本统一过 `scrub()`；`hideRealNames` 默认 true
+- 挂点：战斗页单位下拉（直接去掉真名括注）、魔力统计「角色」列（scrubName，
+  替换后=单位键则显示 —）、行动统计原文 tooltip、引擎面板行动原文/裁决上下文、
+  设置页口径表限制/效果列（**规则数据本身含真名**：礼装制作 limit_per=
+  「术从·张角 B级追加宣言×2」——数据层真名也会漏，必须 scrub）
+- 设置页单位注册表默认「（已隐藏）」，GM 可勾「显示真名」临时看，离开页面自动关
+- 验证：六页（campaign/battle/mana-stats/action-stats/settings/tools）无头扫描
+  14 个真名全部 0 泄漏；e2e-summary 33/33、e2e-agent 22/22
+- **双击启动器** `启动GM助手.bat`（仓库根，GBK+CRLF——cmd 的 bat 必须 CRLF，
+  UTF-8 中文注释会吞行；timeout 换 ping 免终端依赖；起后端+开 /campaign，幂等）。
+  exe 打包链断三处：frontend/electron/ 被 gitignore（主进程文件只在旧机器）、
+  electron 依赖未装、ABI 配方丢失——要重打需专门修链
+- 真名备注：character_card.code 字段名有误导，存的其实是真名；真正代号=单位键
+
 ## 2026-09-11（五）
 
 **解析压力测试矩阵 + 别名包 + 技能/宝具占位口径 + 战役克隆工具**

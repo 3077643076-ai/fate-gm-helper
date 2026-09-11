@@ -1,9 +1,12 @@
 <script setup>
 // 设置页：AI 助手配置 · QQ 群映射 · 行动口径 · 单位注册表 · 本地测试说明
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { privacy, scrub } from '../privacy'
 
 const campaigns = ref([])
 const campaignId = ref(null)
+// 离开设置页自动回到「隐藏真名」，防止 GM 忘了关
+onUnmounted(() => { privacy.hideRealNames = true })
 
 // ---- AI 配置（agent_config KV，白名单键） ----
 const cfg = ref({})
@@ -167,8 +170,8 @@ watch(campaignId, (v) => { localStorage.setItem('hub-campaign-id', v ?? ''); loa
             <td>{{ r.phase }}</td>
             <td>{{ r.base_rate ?? '—' }}<span v-if="r.rate_formula" class="hint">（{{ r.rate_formula }}）</span></td>
             <td>{{ [r.mana_cost ? '-' + r.mana_cost : '', r.mana_gain ? '+' + r.mana_gain : ''].filter(Boolean).join(' / ') || '—' }}</td>
-            <td>{{ r.limit_per || '—' }}</td>
-            <td class="effect">{{ r.effect_text || '—' }}</td>
+            <td>{{ scrub(r.limit_per) || '—' }}</td>
+            <td class="effect">{{ scrub(r.effect_text) || '—' }}</td>
           </tr>
         </tbody>
       </table>
@@ -176,15 +179,17 @@ watch(campaignId, (v) => { localStorage.setItem('hub-campaign-id', v ?? ''); loa
     </section>
 
     <section class="card">
-      <div class="card-title">单位注册表 <em>{{ units.length }} 个</em></div>
+      <div class="card-title">单位注册表 <em>{{ units.length }} 个</em>
+        <label class="switch"><input type="checkbox" :checked="!privacy.hideRealNames" @change="privacy.hideRealNames = !$event.target.checked" /> 显示真名（仅本页，离开自动隐藏）</label>
+      </div>
       <table v-if="units.length" class="tbl">
-        <thead><tr><th>单位键</th><th>职阶</th><th>主体</th><th>角色卡</th><th>状态</th></tr></thead>
+        <thead><tr><th>单位键</th><th>职阶</th><th>主体</th><th>角色卡（真名）</th><th>状态</th></tr></thead>
         <tbody>
           <tr v-for="u in units" :key="u.unit_key">
             <td class="mono">{{ u.unit_key }}</td>
             <td>{{ u.class }}</td>
             <td>{{ u.side }}</td>
-            <td>{{ u.card_code ?? u.code ?? '—' }}</td>
+            <td>{{ privacy.hideRealNames ? '（已隐藏）' : (u.card_code ?? u.code ?? '—') }}</td>
             <td>
               <span v-if="u.missing" class="badge bad">缺卡</span>
               <span v-else class="badge okb">已关联</span>

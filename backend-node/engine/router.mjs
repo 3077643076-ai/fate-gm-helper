@@ -6,6 +6,7 @@ import { parseAnnouncement, standardizeAnnouncement, normalizeLeyline, formatAct
 import { parseWithLLM } from './llm.mjs'
 import { settleRound, chainRank } from './settler.mjs'
 import { fetchGroupNotices, sendGroupMsg } from './qqport.mjs'
+import { loadGateLexicon } from './exitgate.mjs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
@@ -395,6 +396,12 @@ router.post('/notices/remind', async (req, res) => {
     }
   }
   res.json({ ok: failed.length === 0, sent, failed })
+})
+
+// ---------- 隐私词典：真名 → 单位键（前端显示层统一替换用） ----------
+router.get('/privacy/lexicon', (req, res) => {
+  const campaignId = req.query.campaignId ? Number(req.query.campaignId) : null
+  res.json(loadGateLexicon(db, campaignId))
 })
 
 // ---------- 一键催未交：自动检查各私组公告，向未交的组发提醒（检查+催办一步完成） ----------

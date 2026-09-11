@@ -3,10 +3,13 @@
 //   战役处理 /campaign · 战斗 /battle · 设置 /settings · 小工具 /tools
 // 旧页面（角色卡/技能/规则顾问/旧战斗）归入小工具与战斗的关联高亮，路由不变
 import { useRoute, useRouter } from 'vue-router'
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
+import { loadLexicon } from './privacy'
 
 const route = useRoute()
 const router = useRouter()
+
+onMounted(loadLexicon)
 
 const navItems = [
   { path: '/campaign', label: '战役处理', icon: 'list' },
