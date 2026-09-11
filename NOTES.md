@@ -1,5 +1,35 @@
 # NOTES.md
 
+## 2026-09-11
+
+**离线测试环境备齐：假 NapCat + 引擎旧表迁移 + 公告幂等补漏（三连修）**
+- 背景：GM 出差期要先全流程测试，「离线部分」和「QQ 公告收集」分开测
+- 新增 `tools/mock-napcat.mjs` + `mock-napcat.json`：假 NapCat（零依赖 node http），
+  实现引擎用到的全部三个接口（_get_group_notice / send_group_msg / _send_group_notice），
+  公告内容存 JSON 每次请求重读（改完存盘即生效）；回写公告进覆盖层后续读取可见；
+  控制台实时打印引擎外发（回执/催办）；GET / 有状态页。QQ 收集链路可完全离线测
+- **修 1：engine_actions 旧表迁移（store.mjs）**——本机库是 M1 期结构：无 slot 列 +
+  UNIQUE(campaign_id,round,phase,unit_key)，多动登记必炸（agent/面板登记全报
+  "no such column: slot"）。ensureEngineTables 末尾加幂等迁移：检测缺 slot →
+  重建为新结构（无 UNIQUE + slot），数据保留、旧行动 slot 补 1
+- **修 2：公告幂等补漏（agent.mjs）**——hash 标记此前只写不读，重复跑靠行动级查重
+  兜底，**需裁决项会重复建**（搓空花跑两遍=两条裁决）。两处修复：
+  ① 真·hash 跳过：同群同 hash 登记过 → 整组跳过（查 agent_log register 审计）；
+  ② 裁决去重：同战役+回合+时段+同 context 的 open 裁决不重建
+- **修 3：seed-unit-registry 跨机器化**——card_id 从写死旧机器 id 改为按 code 现查
+  character_card（campaign 999002），查不到标 missing=1。本机 14 卡全在，seed 后
+  0 缺卡（旧机器的"6 张缺卡"清单作废）
+- 冒烟实测（副本库+假 NapCat+真后端）：术组多动公告 3 登记+回执、弓组 1 登记+
+  搓空花进需裁决+回执、枪组未交催办；第二三次跑全 hash 跳过、裁决恒 1 条；
+  e2e-agent 22/22（幂等断言更新为整组跳过语义）、e2e-summary 33/33
+- **踩坑**：换测试副本库只删 .db 不删 -wal/-shm → 旧 WAL 重放进新库，幽灵数据
+  （已登记过的 hash、重复裁决"复活"）——换库必须三件套一起删
+- 顺带：本机库已灌 24 条口径 + 14 单位 + 2 条例行别名（乐不思蜀→奏乐 / 结阵→阵地制作）；
+  灵脉为占位（灵脉-A~J），私组群映射未录（面板加或等真实数据）
+- 待 GM：手动核对口径/单位/别名 → 真实公告换进 mock-napcat.json → 开团前把私组
+  群映射录进面板；「已确认」标记仍无写入方（fate-actions 未恢复，或后续让引擎
+  回执后 sendGroupNotice 回写——接口已在 qqport 备好）
+
 ## 2026-09-10
 
 **行动统计完成：一键统计提交 + 一键催未交 + 规范文本按结算链排序（面板 + CLI）**

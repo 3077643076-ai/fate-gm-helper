@@ -216,6 +216,19 @@ export async function collectActions(db, campaignId, opts = {}) {
       const round = opts.round ?? header?.round ?? currentRoundOf(db, campaignId)
       const phase = opts.phase ?? header?.phase ?? cfg.agentPhase ?? '昼'
 
+      // 2a) 真·hash 跳过：同群同 hash 的公告登记过 → 整组跳过（此前标记只写不读，
+      //     重复跑全靠行动级查重兜底，需裁决项会重复建刷屏）
+      const processed = db.prepare(
+        `SELECT id FROM agent_log
+          WHERE campaign_id = ? AND step = 'register' AND target = ? AND ok = 1
+            AND detail LIKE ? LIMIT 1`
+      ).get(campaignId, String(g.group_id), `%"hash":"${hash}"%`)
+      if (processed) {
+        row.hashSkipped = true
+        logAgent(db, runId, campaignId, 'skip', g.group_id, true, { hash, reason: '同公告已登记过' })
+        continue
+      }
+
       // 3) 纯规则标准化：按 从者/御主 前缀分段，各自用对应单位键
       //    （没写前缀的公告整段算从者，与面板手选单位的习惯一致）
       const unitBase = g.class
@@ -264,12 +277,18 @@ export async function collectActions(db, campaignId, opts = {}) {
               registeredKeys.push({ id, unitKey, actionKey: rule.action_key, target: a.target ?? null, from: 'llm' })
             }
           }
-          // LLM 也没救回来的 → 需裁决（带 LLM 备注/原文，GM 拍板）
+          // LLM 也没救回来的 → 需裁决（带 LLM 备注/原文，GM 拍板）；同条 open 裁决已存在则不重建
           if (!llmOk) {
+            const ctx = `${unitKey} 片段"${f.fragment}": ${f.message}`
+            const dupeRuling = db.prepare(
+              `SELECT id FROM engine_pending_ruling
+                WHERE campaign_id = ? AND round = ? AND phase = ? AND status = 'open' AND context = ?`
+            ).get(campaignId, round, phase, ctx)
+            if (dupeRuling) continue
             const info = db.prepare(
               `INSERT INTO engine_pending_ruling (campaign_id, round, phase, kind, context, ai_guess)
                VALUES (?,?,?,?,?,?)`
-            ).run(campaignId, round, phase, 'parse_fail', `${unitKey} 片段"${f.fragment}": ${f.message}`, canLlm ? 'LLM 未能给出可信解析' : null)
+            ).run(campaignId, round, phase, 'parse_fail', ctx, canLlm ? 'LLM 未能给出可信解析' : null)
             row.rulings++
             rulingNotes.push({ rulingId: info.lastInsertRowid, fragment: f.fragment })
           }

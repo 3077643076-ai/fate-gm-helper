@@ -373,6 +373,41 @@ export function ensureEngineTables(db) {
       updated_at TEXT
     );
   `)
+
+  // —— 旧库结构迁移（幂等，只在本机旧表缺列时触发一次）——
+  // M1 期的 engine_actions 无 slot 列，且带 UNIQUE(campaign_id, round, phase, unit_key)；
+  // 多动登记（2bd7919）要求同单位同时段可登记多行动，旧表会既没列可写又撞唯一键。
+  // 处理：重建为新结构（无 UNIQUE + slot），数据原样保留、slot 统一补 1。
+  {
+    const cols = db.prepare(`PRAGMA table_info(engine_actions)`).all().map(c => c.name)
+    if (cols.length && !cols.includes('slot')) {
+      db.exec(`ALTER TABLE engine_actions RENAME TO engine_actions_legacy`)
+      db.exec(`
+        CREATE TABLE engine_actions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          campaign_id INTEGER NOT NULL,
+          round INTEGER NOT NULL,
+          phase TEXT NOT NULL,
+          unit_key TEXT NOT NULL,
+          slot INTEGER NOT NULL DEFAULT 1,
+          action_key TEXT NOT NULL,
+          target TEXT,
+          variant TEXT,
+          raw_text TEXT,
+          status TEXT DEFAULT 'declared',
+          settle_note TEXT,
+          created_at TEXT DEFAULT (datetime('now','localtime'))
+        );
+      `)
+      db.exec(`
+        INSERT INTO engine_actions
+          (id, campaign_id, round, phase, unit_key, slot, action_key, target, variant, raw_text, status, settle_note, created_at)
+        SELECT id, campaign_id, round, phase, unit_key, 1, action_key, target, variant, raw_text, status, settle_note, created_at
+          FROM engine_actions_legacy;
+      `)
+      db.exec(`DROP TABLE engine_actions_legacy`)
+    }
+  }
 }
 
 /**

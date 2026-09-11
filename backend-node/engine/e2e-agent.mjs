@@ -85,7 +85,9 @@ const sent2 = []
 const ports2 = { ...ports, sendMsg: async (_b, gid, t) => { sent2.push([gid, t]) } }
 const sum2 = await collectActions(db, 999001, { ports: ports2, config: cfg })
 check('第二轮不新增登记', sum2.totals.registered === 0, JSON.stringify(sum2.totals))
-check('重复项被识别', sum2.totals.duplicates === 2, JSON.stringify(sum2.totals))
+check('已交组整组 hash 跳过（不重解析不重复建裁决）',
+  sum2.groups.filter(g => g.submitted).every(g => g.hashSkipped === true) && sum2.totals.rulings === 0,
+  JSON.stringify(sum2.groups))
 check('无登记不发确认回执（不刷屏）', !sent2.some(([gid]) => gid === '10001'))
 
 // ===== 清理 =====
