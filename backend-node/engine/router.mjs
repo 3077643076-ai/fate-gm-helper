@@ -73,6 +73,99 @@ router.get('/units', (_req, res) => {
   res.json({ units })
 })
 
+// ---------- 每轮末魔力统计：上轮期末 / 本轮行动增减 / 本轮录入 对照 ----------
+//  应然期末 = 上轮期末录入 + 本轮行动魔力净增减（昼+夜，作废不计）
+//  差异 = 本轮录入 - 应然期末；≠0 标红交 GM 核（战斗增减待功能④接入）
+router.get('/mana/report', (req, res) => {
+  const campaignId = requireCampaignId(req.query.campaignId)
+  if (!campaignId) return res.status(400).json({ error: '需要 campaignId' })
+  const round = Number(req.query.round) || currentRound(campaignId)
+  const prevRound = round - 1
+
+  const statusRows = db.prepare(`
+    SELECT character_card_id, round_number, current_mana, mana_limit
+      FROM character_status WHERE campaign_id = ? AND round_number IN (?, ?)`).all(campaignId, prevRound, round)
+  const statusOf = (cardId, rn) => statusRows.find(r => r.character_card_id === cardId && r.round_number === rn) ?? null
+
+  const unitRows = db.prepare(`
+    SELECT u.unit_key, u.class, u.side, u.code, u.card_id, u.missing,
+           c.code AS card_code, c.total_mana
+      FROM unit_registry u LEFT JOIN character_card c ON c.id = u.card_id`).all()
+  const unitByKey = Object.fromEntries(unitRows.map(u => [u.unit_key, u]))
+
+  const actionRows = db.prepare(`
+    SELECT a.unit_key, a.phase, a.action_key, a.target, a.status, a.slot,
+           IFNULL(r.mana_cost, 0) AS mana_cost, IFNULL(r.mana_gain, 0) AS mana_gain
+      FROM engine_actions a
+      LEFT JOIN action_rules r ON r.action_key = a.action_key
+     WHERE a.campaign_id = ? AND a.round = ?`).all(campaignId, round)
+
+  const byKey = {}
+  const ensure = key => (byKey[key] ??= {
+    unitKey: key, cardId: unitByKey[key]?.card_id ?? null,
+    breakdown: [], actionGain: 0, actionCost: 0, hasUnsettled: false,
+  })
+  for (const a of actionRows) {
+    if (a.status === 'void') continue
+    const row = ensure(a.unit_key)
+    row.actionGain += a.mana_gain
+    row.actionCost += a.mana_cost
+    if (a.status !== 'settled') row.hasUnsettled = true
+    row.breakdown.push({ phase: a.phase, actionKey: a.action_key, target: a.target, slot: a.slot, status: a.status, mana: a.mana_gain - a.mana_cost })
+  }
+  for (const u of unitRows) ensure(u.unit_key) // 没行动的单位也进表，魔力对照要全员
+
+  const rows = Object.values(byKey).map(r => {
+    const u = unitByKey[r.unitKey]
+    const prev = r.cardId != null ? statusOf(r.cardId, prevRound)?.current_mana ?? null : null
+    const curr = r.cardId != null ? statusOf(r.cardId, round)?.current_mana ?? null : null
+    const manaLimit = (r.cardId != null ? statusOf(r.cardId, round)?.mana_limit ?? null : null) ?? u?.total_mana ?? null
+    const delta = r.actionGain - r.actionCost
+    const expected = prev != null ? prev + delta : null
+    const diff = expected != null && curr != null ? curr - expected : null
+    return {
+      unitKey: r.unitKey, class: u?.class ?? null, side: u?.side ?? null,
+      cardCode: u?.card_code ?? u?.code ?? null, cardId: r.cardId, missing: u?.missing ?? null,
+      manaLimit, prevMana: prev, currMana: curr,
+      actionGain: r.actionGain, actionCost: r.actionCost, actionDelta: delta,
+      hasUnsettled: r.hasUnsettled, expected, diff, breakdown: r.breakdown,
+    }
+  })
+
+  // 状态表里有、单位注册表没关联的卡（孤儿）单列，防漏人
+  const covered = new Set(rows.map(r => r.cardId).filter(Boolean))
+  const orphanIds = [...new Set(statusRows.map(s => s.character_card_id).filter(id => !covered.has(id)))]
+  for (const cardId of orphanIds) {
+    const card = db.prepare(`SELECT code FROM character_card WHERE id = ?`).get(cardId)
+    rows.push({
+      unitKey: null, class: null, side: null,
+      cardCode: card?.code ?? `卡#${cardId}`, cardId, missing: null,
+      manaLimit: statusOf(cardId, round)?.mana_limit ?? null,
+      prevMana: statusOf(cardId, prevRound)?.current_mana ?? null,
+      currMana: statusOf(cardId, round)?.current_mana ?? null,
+      actionGain: 0, actionCost: 0, actionDelta: 0,
+      hasUnsettled: false, expected: null, diff: null, breakdown: [],
+    })
+  }
+
+  rows.sort((a, b) =>
+    String(a.class ?? '～').localeCompare(String(b.class ?? '～'), 'zh')
+    || String(a.side ?? '').localeCompare(String(b.side ?? ''), 'zh')
+    || String(a.unitKey ?? a.cardCode).localeCompare(String(b.unitKey ?? b.cardCode), 'zh'))
+
+  res.json({
+    round, prevRound,
+    summary: {
+      units: rows.length,
+      withPrev: rows.filter(r => r.prevMana != null).length,
+      withCurr: rows.filter(r => r.currMana != null).length,
+      diffs: rows.filter(r => r.diff != null && r.diff !== 0).length,
+      unsettled: rows.filter(r => r.hasUnsettled).length,
+    },
+    rows,
+  })
+})
+
 // ---------- 登记行动：文本 → 多行动解析（切分器+别名归一） → 逐条入库（失败片段进需裁决） ----------
 router.post('/actions', (req, res) => {
   const { campaignId, round, phase = '昼', unitKey, text } = req.body ?? {}

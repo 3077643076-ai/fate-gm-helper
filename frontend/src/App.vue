@@ -11,6 +11,7 @@ const router = useRouter()
 const navItems = [
   { path: '/campaign', label: '战役处理', icon: 'list' },
   { path: '/action-stats', label: '行动统计', icon: 'check' },
+  { path: '/mana-stats', label: '魔力统计', icon: 'mana' },
   { path: '/battle', label: '战斗', icon: 'swords' },
   { path: '/settings', label: '设置', icon: 'gear' },
   { path: '/tools', label: '小工具', icon: 'wrench' },
@@ -19,6 +20,7 @@ const navItems = [
 // 图标：24x24 线稿（stroke），每组是若干 path 的 d 数据
 const ICONS = {
   list: ['M4 6h16', 'M4 12h16', 'M4 18h10'],
+  mana: ['M12 3.5c3.2 3.8 5.8 6.9 5.8 9.9a5.8 5.8 0 0 1-11.6 0c0-3 2.6-6.1 5.8-9.9z', 'M9.5 13.5a2.6 2.6 0 0 0 2.2 2.6'],
   check: ['M8 5h8v3H8z', 'M6.5 5H6a1.5 1.5 0 0 0-1.5 1.5V19A1.5 1.5 0 0 0 6 20.5h12a1.5 1.5 0 0 0 1.5-1.5V6.5A1.5 1.5 0 0 0 18 5h-.5', 'M9 13.5l2.2 2.2 4-4.4'],
   swords: ['M4.5 4.5l9.5 9.5', 'M19.5 4.5l-9.5 9.5', 'M12.5 15.5l2.5 2.5', 'M11.5 15.5l-2.5 2.5', 'M6 18l-1.5 1.5', 'M18 18l1.5 1.5'],
   gear: [

@@ -11,6 +11,7 @@ import BattleHub from '../views/BattleHub.vue'
 import SettingsPage from '../views/SettingsPage.vue'
 import ToolsPage from '../views/ToolsPage.vue'
 import ActionStatsPage from '../views/ActionStatsPage.vue'
+import ManaStatsPage from '../views/ManaStatsPage.vue'
 
 const routes = [
   { path: '/', redirect: '/campaign' },
@@ -18,6 +19,7 @@ const routes = [
   { path: '/engine', redirect: '/campaign' }, // 旧路径兼容
   { path: '/battle', name: 'battle', component: BattleHub },
   { path: '/action-stats', name: 'action-stats', component: ActionStatsPage },
+  { path: '/mana-stats', name: 'mana-stats', component: ManaStatsPage },
   { path: '/settings', name: 'settings', component: SettingsPage },
   { path: '/tools', name: 'tools', component: ToolsPage },
   { path: '/engine-battle/:battleId?', name: 'engine-battle', component: EngineBattleSheet },
