@@ -52,8 +52,14 @@
           <div class="progress-fill" :style="{ width: (install.progress || 5) + '%' }" />
         </div>
         <p v-if="install.phase === 'error' || install.flowError" class="warn-tip">
-          {{ install.message || install.flowError }}<br />
-          也可以手动下载 NapCat（github.com/NapNeko/NapCatQQ 的 Releases）解压后，在下方高级选项里填解压目录。
+          {{ install.flowError || install.message }}<br />
+          <template v-if="install.phase === 'error'">
+            也可以手动下载 NapCat（github.com/NapNeko/NapCatQQ 的 Releases）解压后，在下方高级选项里填解压目录。<br />
+          </template>
+          <template v-else>
+            常见原因：本机 QQ 正开着（NapCat 是注入本机 QQ 运行的，先退出 QQ 再点一次）；
+            或 NapCat 目录里没有 launcher-user.bat。启动日志在 NapCat 目录的 launch.log。
+          </template>
         </p>
         <p class="sheet-note">
           机器人由内置的 NapCat（作者 Mlikiowa，github.com/NapNeko/NapCatQQ，非商业许可，原文见包内
@@ -172,6 +178,9 @@ const qrcode = ref(null)
 // 进度条文案：优先流程 message，兜底按阶段拼
 const progressText = computed(() => {
   if (status.value.connected) return '已连接，一切就绪'
+  // 流程中断时把真实原因摆在最前面（以前这里显示的是上一步的旧 message，
+  // 结果就是"点了没反应"却看不出哪一步失败）
+  if (install.value.flowError) return `登录流程中断：${install.value.flowError}`
   if (install.value.webuiRunning && qrcode.value) return '二维码已出，请扫码'
   return install.value.message || '准备中…'
 })

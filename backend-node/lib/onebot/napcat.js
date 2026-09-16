@@ -573,7 +573,9 @@ async function runLoginFlow({ configuredDir, wsPort, wsToken, qqNumber }) {
     flowState.dir = hit.dir;
 
     // 第 2 步：预写 OneBot 网络配置（正向 WS 对齐工作台，登录后自动可连）
-    ensureOnebotConfig({ napcatDir: hit.dir, wsPort, wsToken, qqNumber: opts.qqNumber });
+    // 注意：这里的 qqNumber 是函数入参解构出来的（曾经误写成 opts.qqNumber，
+    // 导致整个登录流程在这一行抛 "opts is not defined"，表现就是"点了没反应、二维码不出来"）
+    ensureOnebotConfig({ napcatDir: hit.dir, wsPort, wsToken, qqNumber });
 
     // 第 3 步：启动 NapCat
     installState.message = '启动 NapCat…';
