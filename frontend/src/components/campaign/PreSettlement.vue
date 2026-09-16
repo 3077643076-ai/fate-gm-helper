@@ -122,10 +122,16 @@
           </tr>
         </tbody>
       </table>
-      <p v-if="engineActions.length && !playersLoaded" class="sheet-note">
-        玩家一列取自各职阶私组的群成员（机器人需在线）：{{ playersHint || '还没取到' }}
+      <p v-if="engineActions.length && missingPlayerCount" class="sheet-note">
+        有 {{ missingPlayerCount }} 条行动的"玩家"还没对上：机器人上线后会自动识别各职阶私组的群主并记下来
+        （之后机器人不在线也能显示）。{{ playersHint }}
       </p>
-      <p v-else class="empty-tip">
+      <p v-if="engineActions.length" class="sheet-note">
+        分工：上面那张表是 QQ 指令/网页提交的<b>原始原文</b>（存 action_submission 表）；
+        这张表是 AI 代收/标准话术<b>解析后的结构化行动</b>（存 engine_actions 表），
+        结算与工序推进以这张表为准，两张表互不覆盖。
+      </p>
+      <p v-if="!engineActions.length" class="empty-tip">
         引擎里还没有登记行动。点上方"AI 代收行动"解析各群公告后，结果会出现在这里。
       </p>
     </div>
@@ -252,12 +258,21 @@ async function loadUnitPlayers() {
   }
 }
 
-// 某一行的玩家显示：该职阶私组里除机器人外的成员（通常就一个玩家）
+// 某一行的玩家显示：优先用后端持久化的"职阶 ↔ 玩家"绑定（机器人不在线也显示），
+// 其次用本次查到的私组群成员（群主优先，退化成唯一成员）
 function playerOf(action) {
+  if (action.playerName) return action.playerName
   const g = unitPlayers.value?.[action.class]
-  if (!g || !g.members?.length) return '—'
-  return g.members.map((m) => m.name || m.qq).join('、')
+  if (!g) return '—'
+  if (g.player?.name) return g.player.name
+  if (g.members?.length) return g.members.map((m) => m.name || m.qq).join('、')
+  return '—'
 }
+
+// 还有几条行动的玩家没对上（页面提示用）
+const missingPlayerCount = computed(
+  () => engineActions.value.filter((a) => !a.playerName && !unitPlayers.value?.[a.class]?.player?.name).length,
+)
 
 // NapCat HTTP 地址：优先读 AI 助手配置；没配也能工作（后端指令优先走 WS 通道，
 // 这里的地址只是 HTTP 回落兜底），所以查不到配置时给默认值而不是报错

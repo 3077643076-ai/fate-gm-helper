@@ -1,5 +1,29 @@
 # NOTES.md
 
+## 2026-09-16（夜 16，职阶 ↔ 玩家绑定落库 + 两张表分工说明）
+
+用户反馈两点：**"QQ 名可以和角色对上的"**（希望玩家和角色/职阶绑定）、**两张表保持但要说清楚**。
+
+- 新增表 `engine_player_binding`（campaign_id + class 唯一）：qq / name / source(auto|manual) / note / updated_at
+- `/api/engine/players` 的判定改成：**私组群主优先**（私组一般是玩家自己建的、把机器人拉进来，
+  所以 role=owner 那个就是他），退化成"除机器人外只有一个成员"时用他；识别到就 upsert 入库
+  （`source=manual` 的不被自动识别覆盖）→ **之后机器人不在线也能显示 QQ 名**
+- 新增 `PUT /api/engine/players`（campaignId/class/qq/name）手动改绑定，自动识别猜错时用（比如 GM 也在那个私组里）
+- `/api/engine/status` 的每条行动再带上 `playerName/playerQq/playerSource`
+- 前端：玩家列改为"持久化绑定优先 → 实时群成员兜底 → —"；缺玩家的条数会在表下提示；
+  并在表下写明**两张表的分工**（上面=指令/网页提交的原文，存 action_submission；
+  下面=AI 代收/标准话术解析后的结构化行动，存 engine_actions，结算以它为准，互不覆盖）
+
+**实测**（测试后端 8101 + 正式库副本）：PUT 手动绑定"剑=测试玩家-剑" → `/status` 里剑御/剑从都带出该玩家名；
+机器人离线时 `/players` 仍返回已保存的绑定（剑有、其余为空）。
+
+**顺带澄清一个误解**：用户以为"上面的表没做持久化"，其实 `action_submission` 是持久化表，
+只是这场是 0 行（大家都走群公告 → AI 代收，落 `engine_actions`）。
+
+**前端更新不用重打 exe**：`启动GM工作台.bat` 直接读项目里的 `frontend/dist`，
+改前端后 `npm --prefix frontend run build` 再重开就行；exe 里的前端是打包时烤进去的，必须重打包才更新。
+
+
 ## 2026-09-16（夜 15，"引擎登记的行动"表补 代号 / 玩家 QQ 名 / 原文）
 
 **用户需求**：结算前页那张"引擎登记的行动"表只有 `x从/x御`，看不出是谁；要加**代号**和**QQ 名**，

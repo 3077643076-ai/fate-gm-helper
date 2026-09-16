@@ -230,6 +230,22 @@ export function ensureEngineTables(db) {
       UNIQUE(campaign_id, group_id)
     );
 
+    -- 职阶 ↔ 玩家绑定：把"哪个职阶是谁"记下来（行动表要显示代号 + QQ 名）
+    -- 自动填：查私组群成员时优先取群主（玩家一般自己建私组并把机器人拉进来），
+    --         取不到就退化成"除了机器人之外的唯一成员"；GM 也可以手动改（source=manual）
+    -- 存下来之后，机器人不在线也能显示 QQ 名，不必每次去问 NapCat
+    CREATE TABLE IF NOT EXISTS engine_player_binding (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      campaign_id INTEGER NOT NULL,
+      class TEXT NOT NULL,             -- 职阶（剑/弓/术/杀/枪/狂/骑）
+      qq TEXT,
+      name TEXT,                       -- 群名片优先，没名片用昵称
+      source TEXT DEFAULT 'auto',      -- auto=自动识别 / manual=GM 手动改
+      note TEXT,
+      updated_at TEXT DEFAULT (datetime('now','localtime')),
+      UNIQUE(campaign_id, class)
+    );
+
     -- ===== 以下为 v0.5 AI 助手（agent）相关表 =====
 
     -- 消息日志：QQ 群聊/私聊/公告/AI 外发全量留痕（复盘/审计/给 LLM 的上下文素材）

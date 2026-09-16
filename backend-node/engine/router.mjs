@@ -50,6 +50,11 @@ router.get('/status', (req, res) => {
     `SELECT class, group_id, group_name FROM engine_group_binding WHERE campaign_id = ? AND kind = 'private'`,
   ).all(campaignId)
   const groupByClass = Object.fromEntries(groupRows.map((g) => [g.class, g]))
+  // 职阶 ↔ 玩家绑定（持久化）：机器人不在线也能显示 QQ 名
+  const playerRows = db.prepare(
+    `SELECT class, qq, name, source, updated_at FROM engine_player_binding WHERE campaign_id = ?`,
+  ).all(campaignId)
+  const playerByClass = Object.fromEntries(playerRows.map((p) => [p.class, p]))
   const actions = db.prepare(`
     SELECT a.id, a.unit_key, a.slot, a.action_key, a.target, a.variant, a.raw_text, a.status, a.settle_note, a.created_at,
            u.code AS code, u.side AS side, u.missing AS card_missing, u.card_id AS card_id
@@ -60,7 +65,16 @@ router.get('/status', (req, res) => {
     .map((a) => {
       const cls = className(a.unit_key)
       const g = groupByClass[cls] || null
-      return { ...a, class: cls, groupId: g?.group_id || null, groupName: g?.group_name || null }
+      const p = playerByClass[cls] || null
+      return {
+        ...a,
+        class: cls,
+        groupId: g?.group_id || null,
+        groupName: g?.group_name || null,
+        playerName: p?.name || null,
+        playerQq: p?.qq || null,
+        playerSource: p?.source || null,
+      }
     })
   res.json({
     round,
@@ -78,6 +92,20 @@ router.get('/status', (req, res) => {
 // 私组通常只有"玩家 + 机器人"，所以剩下的就是那个玩家的群名片。
 // 缓存：成功 5 分钟、失败 20 秒（机器人没上线时前端显示"—"，且不拖慢 status 轮询）。
 const playersCache = new Map() // campaignId -> { at, ttl, data }
+
+// 职阶 ↔ 玩家绑定写库（source=manual 的不被自动识别覆盖）
+function upsertPlayerBinding(campaignId, cls, { qq, name }, source = 'auto', note = '') {
+  db.prepare(`
+    INSERT INTO engine_player_binding (campaign_id, class, qq, name, source, note, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+    ON CONFLICT(campaign_id, class) DO UPDATE SET
+      qq = excluded.qq,
+      name = excluded.name,
+      source = CASE WHEN engine_player_binding.source = 'manual' THEN 'manual' ELSE excluded.source END,
+      note = excluded.note,
+      updated_at = excluded.updated_at
+  `).run(campaignId, cls, qq ?? null, name ?? null, source, note)
+}
 
 router.get('/players', async (req, res) => {
   const campaignId = requireCampaignId(req.query.campaignId)
@@ -116,16 +144,60 @@ router.get('/players', async (req, res) => {
           qq: String(m.user_id ?? m.userId ?? ''),
           // 群名片优先（玩家通常把状态写在名片里），没有就用昵称
           name: String(m.card || m.nickname || m.user_id || ''),
+          role: String(m.role || 'member'),
         }))
-      players[g.class] = { groupId: g.group_id, groupName: g.group_name, members: list }
+      // 玩家判定：群主优先（私组一般是玩家自己建的、把机器人拉进来），
+      // 否则退化成"除机器人外只有一个成员"时就用他
+      const owner = list.find((m) => m.role === 'owner')
+      const only = list.length === 1 ? list[0] : null
+      const picked = owner || only
+      let bound = null
+      if (picked) {
+        upsertPlayerBinding(
+          campaignId,
+          g.class,
+          picked,
+          'auto',
+          owner ? '私组群主' : '私组唯一成员',
+        )
+        bound = { qq: picked.qq, name: picked.name, source: 'auto' }
+      }
+      const saved = db.prepare(
+        `SELECT qq, name, source FROM engine_player_binding WHERE campaign_id = ? AND class = ?`,
+      ).get(campaignId, g.class)
+      players[g.class] = {
+        groupId: g.group_id,
+        groupName: g.group_name,
+        members: list,
+        player: saved || bound || null,
+      }
     } catch (e) {
-      players[g.class] = { groupId: g.group_id, groupName: g.group_name, members: [], error: humanize(e.message) }
+      const saved = db.prepare(
+        `SELECT qq, name, source FROM engine_player_binding WHERE campaign_id = ? AND class = ?`,
+      ).get(campaignId, g.class)
+      players[g.class] = {
+        groupId: g.group_id,
+        groupName: g.group_name,
+        members: [],
+        player: saved || null,
+        error: humanize(e.message),
+      }
       reason = reason || humanize(e.message)
     }
   }
   const data = { players, botOnline: !reason, reason }
   playersCache.set(campaignId, { at: Date.now(), ttl: reason ? 20000 : 5 * 60 * 1000, data })
   res.json(data)
+})
+
+// 手动改"职阶 ↔ 玩家"绑定（自动识别猜错时用，比如 GM 也在那个私组里）
+router.put('/players', (req, res) => {
+  const { campaignId, class: cls, qq = '', name = '' } = req.body ?? {}
+  if (!requireCampaignId(campaignId)) return res.status(400).json({ error: '需要 campaignId（战役 ID）' })
+  if (!cls) return res.status(400).json({ error: '需要 class（职阶：剑/弓/术/杀/枪/狂/骑）' })
+  upsertPlayerBinding(campaignId, String(cls), { qq: String(qq), name: String(name) }, 'manual', 'GM 手动指定')
+  playersCache.delete(campaignId) // 让下次查询重新读
+  res.json({ ok: true, class: cls, qq: String(qq), name: String(name) })
 })
 
 // ---------- 登记行动：文本 → 多行动解析（切分器+别名归一） → 逐条入库（失败片段进需裁决） ----------
