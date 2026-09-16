@@ -1,5 +1,25 @@
 # NOTES.md
 
+## 2026-09-16（夜 19，C1 收尾实测 + 重打包）
+
+**新代码路径实测（用 8101 测试后端 + 正式库副本，qqPath 指向独立 QQ）**：
+- `POST /napcat/launch` → **`napcat.pid = 28200`**（PID 管理生效）、注入的确实是副本 QQ
+  （3 个 QQ 进程路径都在 `data/qqnt-bot/` 下）、NapCat WebUI 6099 就绪、launch.log 正常落盘
+- **关掉工作台（杀 5 个 SanguoEngine 进程）后机器人依然在跑** ✓✓ —— "重启工作台不连带杀机器人"验证通过
+- **GM 自己的 QQ 全程未受影响**（9 个进程一直在）
+- `GET /napcat/qq-env` 返回 `usingIndependent: true` + 本机 QQ / 独立 QQ 两条路径 ✓
+
+**已知问题（待优化）**：**重启机器人需要重新扫一次码** —— 独立 QQ 副本的登录态没有被复用
+（NapCat 每次都重新出二维码）。原因待查，几个怀疑方向：
+① 副本 QQ 与原 QQ 共用 `%APPDATA%\Tencent\QQ` 数据目录，会话按安装路径绑定；
+② NapCat 的 `config/napcat_<QQ>.json` 没有把会话 token 落盘；
+③ 需要给副本 QQ 指定独立的数据目录（QQNT 是 Electron 壳，可能支持 `--user-data-dir`）。
+优先级不高（一个时段只需登录一次），但"迁移/重启频繁"的场景下值得修。
+
+**产物**：`desktop/圣杯GM工作台-便携版-1.0.0.exe`（22:33）+ `圣杯GM工作台-便携版-含QQ机器人.zip`
+（22:33，871 个文件），已确认新 exe 内含本次全部改动（prepareIndependentQQ / detached / napcat.pid）。
+# NOTES.md
+
 ## 2026-09-16（夜 18，C1 落地：机器人用独立 QQ 副本，和 GM 自己的 QQ 并存 ✓ 实测通过）
 
 **用户拍板走 C1**（"要不改成和海豹一致"的具体落法），并提醒"记得打包在一起"。
