@@ -5,7 +5,8 @@ import { openEngineDb } from './store.mjs'
 import { parseAnnouncement, standardizeAnnouncement, normalizeLeyline } from './parser.mjs'
 import { parseWithLLM } from './llm.mjs'
 import { settleRound } from './settler.mjs'
-import { fetchGroupNotices, sendGroupMsg } from './qqport.mjs'
+import { callNapcat, fetchGroupNotices, pickActionNotice, pickStatusNotice, sendGroupMsg } from './qqport.mjs'
+import { extractTimeHeader } from './agent.mjs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
@@ -82,9 +83,18 @@ router.post('/actions', (req, res) => {
 
   const rulingIds = []
   for (const f of parsed.failures) {
+    // 防重：同一单位+同一片段已有 open 裁决就不重复插入
+    const context = `${unitKey} 片段"${f.fragment}": ${f.message}`
+    const dup = db.prepare(
+      `SELECT id FROM engine_pending_ruling WHERE campaign_id = ? AND status = 'open' AND context = ? LIMIT 1`
+    ).get(campaignId, context)
+    if (dup) {
+      rulingIds.push(dup.id)
+      continue
+    }
     const info = db.prepare(
       `INSERT INTO engine_pending_ruling (campaign_id, round, phase, kind, context) VALUES (?,?,?,?,?)`
-    ).run(campaignId, rRound, phase, f.kind ?? 'parse_fail', `${unitKey} 片段"${f.fragment}": ${f.message}`)
+    ).run(campaignId, rRound, phase, f.kind ?? 'parse_fail', context)
     rulingIds.push(info.lastInsertRowid)
   }
 
@@ -129,6 +139,19 @@ router.post('/rulings/resolve', (req, res) => {
   const r = db.prepare(`UPDATE engine_pending_ruling SET status='resolved', resolution=?, resolved_at=datetime('now','localtime') WHERE id=? AND status='open'`).run(resolution, id)
   if (r.changes === 0) return res.status(404).json({ error: `需裁决项 #${id} 不存在或已关闭` })
   res.json({ ok: true })
+})
+
+// 批量忽略：把当前全部 open 的 parse_fail 标记为已忽略（解析噪音清理用）
+router.post('/rulings/bulk-ignore', (req, res) => {
+  const campaignId = requireCampaignId(req.query.campaignId ?? req.body?.campaignId)
+  if (!campaignId) return res.status(400).json({ error: '需要 campaignId' })
+  const r = db.prepare(`
+    UPDATE engine_pending_ruling SET status='resolved',
+      resolution=COALESCE(NULLIF(resolution, ''), '忽略（解析噪音）'),
+      resolved_at=datetime('now','localtime')
+    WHERE campaign_id = ? AND status = 'open' AND kind = 'parse_fail'
+  `).run(campaignId)
+  res.json({ ok: true, ignored: r.changes })
 })
 
 // ---------- 判定单（引擎侧只读+挂点；立单走 QQ 工具/网页） ----------
@@ -222,44 +245,242 @@ router.delete('/groups/:id', (req, res) => {
   res.json({ ok: true })
 })
 
-// ---------- 公告检查：一键读取各私组公告，标出未交行动的组 ----------
-// 交了=群里有非空公告（最新一条含"机器人已确认"记为已确认）；没交=无公告或正文为空
-router.post('/notices/check', async (req, res) => {
-  const { campaignId, napcatBase } = req.body ?? {}
+// ---------- 群映射自动识别（从机器人所在群 + 历史消息推断，用户确认后批量写入） ----------
+
+// 从群名推断类型和职阶（规则来自 GM 实际用法）：
+//   灵脉群：群名带"魔力量/人流量"（GM 改群名同步灵脉数值）→ leyline
+//   公屏群：群名带"公屏/全体/公共" → public
+//   GM 群：群名带"GM/管理/裁判" → gm
+//   职阶群：群名带职阶字 → private + 职阶
+function detectKindAndClass(groupName) {
+  const text = String(groupName || '')
+  if (/魔力量|人流量/.test(text)) return { kind: 'leyline', class: null }
+  if (/公屏|全体|公共/.test(text)) return { kind: 'public', class: null }
+  if (/GM|管理|裁判/.test(text)) return { kind: 'gm', class: null }
+  const classTable = [
+    { cls: '弓', re: /弓|archer/i },
+    { cls: '枪', re: /枪|槍|lancer/i },
+    { cls: '骑', re: /骑|騎|rider/i },
+    { cls: '剑', re: /剑|劍|saber/i },
+    { cls: '杀', re: /杀|殺|assassin/i },
+    { cls: '术', re: /术|術|caster/i },
+    { cls: '狂', re: /狂|berserker/i },
+  ]
+  for (const { cls, re } of classTable) {
+    if (re.test(text)) return { kind: 'private', class: cls }
+  }
+  return { kind: 'private', class: null }
+}
+
+// 从灵脉群群名里推断关联的灵脉：拿本战役灵脉名逐个比对（群名一般以灵脉名开头）
+function guessLeylineName(groupName, leylines) {
+  const name = String(groupName || '')
+  let best = null
+  for (const l of leylines) {
+    if (l.name && name.includes(l.name)) {
+      // 取名字最长的一个（避免"灵脉-A"和"灵脉-AB"都命中时选错）
+      if (!best || l.name.length > best.name.length) best = l
+    }
+  }
+  return best?.name || null
+}
+
+// 圣杯战役相关判定（机器人常兼营私骰，所在群大部分与本战役无关）：
+//   high    群名带战役状态格式（魔力/结界/战况/圣杯/令咒/灵脉）——职阶群改名特征，极强信号
+//   medium  历史消息里有圣杯术语——弱信号
+//   unrelated 群名像其他跑团/骰系（COC/SAN/克苏鲁/DND/TRPG/骰）且无强信号——疑似私骰群
+//   low     其余（无任何信号）
+const GROUP_NAME_HIGH = /魔力|结界|戰況|战况|圣杯|聖杯|令咒|靈脈|灵脉|魔力量|人流量/
+const OTHER_TCG_NAME = /COC|SAN|克苏鲁|克蘇魯|DND|D&D|TRPG|跑团|跑團|骰|无限|無限/i
+const HOLY_GRAIL_TERMS = /魔力|结界|灵脉|令咒|从者行动|御主行动|魂食|圣杯|人流量|回路|降临|战况/g
+
+/** 按群名 + 历史消息内容算相关度：high/medium/low/unrelated + 人类可读理由
+ *  kind/class：群名推断出的类型和职阶——职阶字是强信号（职阶群=私组，GM 口径） */
+function detectRelevance(groupName, msgStat, kind, cls) {
+  const name = String(groupName || '')
+  if (GROUP_NAME_HIGH.test(name)) {
+    return { relevance: 'high', reason: '群名带战役状态信息（魔力/结界/魔力量等），很可能是本战役群' }
+  }
+  if (cls) {
+    return { relevance: 'high', reason: `群名带职阶字（${cls}），是本战役职阶群（私组）` }
+  }
+  if (OTHER_TCG_NAME.test(name)) {
+    return { relevance: 'unrelated', reason: '群名像其他跑团/骰系群，疑似私骰用途' }
+  }
+  const hits = msgStat?.holy_hits || 0
+  const total = msgStat?.message_count || 0
+  if (hits >= 3) return { relevance: 'high', reason: `历史消息 ${total} 条中 ${hits} 条含圣杯术语` }
+  if (hits >= 1) return { relevance: 'medium', reason: `历史消息 ${total} 条中 ${hits} 条含圣杯术语` }
+  if (total > 0) return { relevance: 'low', reason: `历史消息 ${total} 条，但无圣杯相关内容` }
+  return { relevance: 'low', reason: '没有历史消息记录' }
+}
+
+// 候选群列表：机器人所在群（get_group_list，含群名）+ 历史消息出现过的群，
+// 排除已登记的；每条带相关度（high/medium/low/unrelated）和建议的 kind/class
+router.get('/groups/auto-detect', async (req, res) => {
+  const campaignId = requireCampaignId(req.query.campaignId)
+  if (!campaignId) return res.status(400).json({ error: '需要 campaignId' })
+
+  // 来源 1：机器人所在的所有群（NapCat get_group_list，带群名）
+  const fromNapcat = []
+  try {
+    const list = await callNapcat(null, 'get_group_list', {})
+    if (Array.isArray(list)) {
+      for (const g of list) {
+        fromNapcat.push({ groupId: String(g.group_id), groupName: g.group_name || '' })
+      }
+    }
+  } catch (e) {
+    return res.status(502).json({ error: `NapCat 未连接（${e.message}）——先在机器人连接页登录` })
+  }
+
+  // 来源 2：历史消息（按群聚合计数 + 统计圣杯术语命中数）
+  const msgRows = db.prepare(`
+    SELECT group_id, content FROM message_log
+    WHERE group_id IS NOT NULL AND group_id != ''
+  `).all()
+  const statMap = new Map()
+  for (const r of msgRows) {
+    const key = String(r.group_id)
+    const stat = statMap.get(key) || { message_count: 0, holy_hits: 0, last_at: null }
+    stat.message_count++
+    HOLY_GRAIL_TERMS.lastIndex = 0
+    if (HOLY_GRAIL_TERMS.test(String(r.content || ''))) stat.holy_hits++
+    statMap.set(key, stat)
+  }
+
+  // 已登记的群排除
+  const existing = new Set(
+    db.prepare(`SELECT group_id FROM engine_group_binding WHERE campaign_id = ?`).all(campaignId).map(r => String(r.group_id))
+  )
+
+  // 本战役灵脉表：给灵脉群推断"关联灵脉"用
+  const leylines = db.prepare(`SELECT id, name FROM leyline WHERE campaign_id = ?`).all(campaignId)
+
+  const rankMap = { high: 0, medium: 1, low: 2, unrelated: 3 }
+  const candidates = fromNapcat
+    .filter(g => !existing.has(g.groupId))
+    .map(g => {
+      const { kind, class: klass } = detectKindAndClass(g.groupName)
+      const stat = statMap.get(g.groupId)
+      const { relevance, reason } = detectRelevance(g.groupName, stat, kind, klass)
+      // 灵脉群：按群名猜关联的灵脉
+      const suggestedLeyline = kind === 'leyline' ? guessLeylineName(g.groupName, leylines) : null
+      return {
+        groupId: g.groupId,
+        groupName: g.groupName,
+        suggestedKind: kind,
+        suggestedClass: klass,
+        suggestedLeyline,
+        messageCount: stat?.message_count || 0,
+        lastAt: stat?.last_at || null,
+        relevance,
+        reason,
+      }
+    })
+    .sort((a, b) => rankMap[a.relevance] - rankMap[b.relevance] || b.messageCount - a.messageCount)
+
+  res.json({ candidates, leylines, note: '相关度是按群名和历史消息猜的，保存前请确认' })
+})
+
+// 批量写入群映射
+router.post('/groups/bulk', (req, res) => {
+  const { campaignId, items } = req.body ?? {}
   if (!requireCampaignId(campaignId)) return res.status(400).json({ error: '需要 campaignId' })
-  if (!napcatBase) return res.status(400).json({ error: '需要 napcatBase（NapCat HTTP 地址，如 http://127.0.0.1:3000）' })
+  if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: '需要 items（群映射数组）' })
+  const insert = db.prepare(
+    `INSERT INTO engine_group_binding (campaign_id, group_id, group_name, kind, class, leyline) VALUES (?,?,?,?,?,?)`
+  )
+  let saved = 0
+  for (const it of items) {
+    if (!it?.group_id || !it?.kind) continue
+    insert.run(campaignId, String(it.group_id), it.group_name ?? '', it.kind, it.class ?? null, it.leyline ?? null)
+    saved++
+  }
+  res.json({ ok: true, saved })
+})
+
+// ---------- 公告检查：一键读取各私组公告，区分行动公告和状态记录 ----------
+// 交了=群里有行动类公告且时段对齐正在收的回合（GM 传 expectedTurn）；
+// 行动公告的时段从文本头识别（"day2夜"→第2天夜=turn5），还是昼的旧公告会标"未更新"
+router.post('/notices/check', async (req, res) => {
+  const { campaignId } = req.body ?? {}
+  // napcatBase 可空：qqport 优先走 WS 通道，HTTP 只是回落
+  const napcatBase = req.body?.napcatBase || 'http://127.0.0.1:3000'
+  // expectedTurn：GM 正在收的回合（turn_number）——用来对齐各组行动公告的时段
+  const expectedTurn = req.body?.expectedTurn ? Number(req.body.expectedTurn) : null
+  if (!requireCampaignId(campaignId)) return res.status(400).json({ error: '需要 campaignId' })
   const groups = db.prepare(`SELECT group_id, group_name, class FROM engine_group_binding WHERE campaign_id = ? AND kind = 'private' ORDER BY class`).all(campaignId)
-  if (!groups.length) return res.status(400).json({ error: '本战役没有登记私组群映射（先在面板配置群映射）' })
+  if (!groups.length) return res.status(400).json({ error: '本战役还没有私组群映射：请到「设置 → 群绑定」，点"从机器人所在群自动识别"，勾选职阶群后保存' })
 
   const checked = []
   const failed = []
   for (const g of groups) {
     try {
+      // 拉全部公告（最新在前），分拣出行动公告和状态记录
       const notices = await fetchGroupNotices(napcatBase, g.group_id)
-      const latest = notices[0] ?? null
-      const text = latest?.text ?? ''
+      const actionNotice = pickActionNotice(notices)
+      const statusNotice = pickStatusNotice(notices)
+      const hasAny = notices.length > 0
+      // 行动公告的时段：从文本时段头解析出属于哪个回合
+      // turn 换算：第N天昼=2N，第N天夜=2N+1（第1天昼=turn2，第2天夜=turn5）
+      let noticeTurn = null
+      let noticePhase = null
+      if (actionNotice) {
+        const header = extractTimeHeader(actionNotice.text)
+        if (header?.round && header?.phase) {
+          noticeTurn = header.round * 2 + (header.phase === '夜' ? 1 : 0)
+          noticePhase = header.phase
+        }
+      }
+      // 时段对齐：公告写的回合 vs GM 正在收的回合
+      const aligned = expectedTurn && noticeTurn ? noticeTurn === expectedTurn : null
       checked.push({
         class: g.class ?? g.group_name ?? g.group_id,
         groupId: g.group_id,
-        hasNotice: text.length > 0,
-        confirmed: text.includes('机器人已确认'),
-        latestText: text.slice(0, 160),
-        pubTime: latest?.pubTime ?? '',
+        // 兼容旧字段：hasNotice = 有任何公告
+        hasNotice: hasAny,
+        // 行动公告：有没有交行动看它
+        hasAction: !!actionNotice,
+        confirmed: !!actionNotice && actionNotice.text.includes('机器人已确认'),
+        actionText: actionNotice?.text.slice(0, 160) || '',
+        actionTime: actionNotice?.pubTime || '',
+        noticeTurn,
+        noticePhase,
+        aligned,
+        // 状态记录公告：单独一栏展示，不参与交行动判定
+        hasStatus: !!statusNotice,
+        statusText: statusNotice?.text.slice(0, 160) || '',
+        statusTime: statusNotice?.pubTime || '',
       })
     } catch (e) {
       failed.push({ class: g.class ?? g.group_id, groupId: g.group_id, error: e.message })
     }
   }
 
-  const missing = checked.filter(c => !c.hasNotice).map(c => c.class)
-  res.json({ checked, missing, failed, summary: { total: groups.length, submitted: checked.filter(c => c.hasNotice).length, missing: missing.length, failed: failed.length } })
+  // 未交行动 = 没有行动公告，或行动公告的时段和正在收的回合不一致（还是昼的旧公告）
+  const missing = checked.filter(c => !c.hasAction || (expectedTurn && c.aligned === false)).map(c => c.class)
+  res.json({
+    checked,
+    missing,
+    failed,
+    expectedTurn,
+    summary: {
+      total: groups.length,
+      submitted: checked.filter(c => c.hasAction && c.aligned !== false).length,
+      missing: missing.length,
+      failed: failed.length,
+      statusOnly: checked.filter(c => c.hasStatus && !c.hasAction).length,
+    },
+  })
 })
 
 // ---------- 一键提醒：向未交行动的私组发提醒消息 ----------
 router.post('/notices/remind', async (req, res) => {
-  const { campaignId, napcatBase, groups, round, phase, customText } = req.body ?? {}
+  // napcatBase 可空：qqport 优先走 WS 通道
+  const { campaignId, groups, round, phase, customText } = req.body ?? {}
+  const napcatBase = req.body?.napcatBase || 'http://127.0.0.1:3000'
   if (!requireCampaignId(campaignId)) return res.status(400).json({ error: '需要 campaignId' })
-  if (!napcatBase) return res.status(400).json({ error: '需要 napcatBase' })
   if (!Array.isArray(groups) || !groups.length) return res.status(400).json({ error: '需要 groups（要提醒的群映射列表）' })
 
   const defaultText = `【行动提醒】第${round ?? '?'}天 ${phase ?? ''}行动提交：请把本组行动写进本群公告，并发 .确认行动 确认。`

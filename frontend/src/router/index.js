@@ -1,26 +1,18 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import Home from '../views/Home.vue'
-import BattleControl from '../views/BattleControl.vue'
-import BattleSheetPage from '../views/BattleSheetPage.vue'
-import CharacterCardUpload from '../views/CharacterCardUpload.vue'
-import SkillRecord from '../views/SkillRecord.vue'
-import SkillTemplateManage from '../views/SkillTemplateManage.vue'
-import RuleAdvisor from '../views/RuleAdvisor.vue'
-import EngineBattleSheet from '../views/EngineBattleSheet.vue'
-import EnginePanel from '../views/EnginePanel.vue'
+import CampaignPage from '../views/CampaignPage.vue'
+import BattlePage from '../views/BattlePage.vue'
+import ToolsPage from '../views/ToolsPage.vue'
+import SettingsPage from '../views/SettingsPage.vue'
 
+// 新骨架路由：四大主 tab（草图：战役 | 战斗 | 小工具 | 设置）
+// 战役 tab 内的 8 个次级页由 CampaignPage 内部按 /campaign/:subTab 切换
 const routes = [
-  { path: '/', name: 'home', component: Home },
-  { path: '/engine', name: 'engine', component: EnginePanel },
-  { path: '/engine-battle/:battleId?', name: 'engine-battle', component: EngineBattleSheet },
-  { path: '/battle-control/:campaignId?', name: 'battle-control', component: BattleControl },
-  { path: '/battle-sheet', name: 'battle-sheet', component: BattleSheetPage },
-  { path: '/battle-sheet/:campaignId', name: 'battle-sheet-page', component: BattleSheetPage },
-  { path: '/character-card-upload/:campaignId?', name: 'character-card-upload', component: CharacterCardUpload },
-  { path: '/dashboard-campaign', redirect: '/battle-control' },
-  { path: '/skill-record', name: 'skill-record', component: SkillRecord },
-  { path: '/skill-templates', name: 'skill-templates', component: SkillTemplateManage },
-  { path: '/rule-advisor', name: 'rule-advisor', component: RuleAdvisor },
+  { path: '/', redirect: '/campaign/settle-pre' },
+  { path: '/campaign/:subTab?', name: 'campaign', component: CampaignPage },
+  { path: '/battle', name: 'battle', component: BattlePage },
+  { path: '/tools', name: 'tools', component: ToolsPage },
+  { path: '/settings', name: 'settings', component: SettingsPage },
+  { path: '/:pathMatch(.*)*', redirect: '/campaign/settle-pre' },
 ]
 
 const router = createRouter({
@@ -32,4 +24,3 @@ const router = createRouter({
 })
 
 export default router
-

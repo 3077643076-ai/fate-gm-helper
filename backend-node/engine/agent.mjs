@@ -13,7 +13,7 @@
 import { createHash } from 'node:crypto'
 import { standardizeAnnouncement } from './parser.mjs'
 import { parseWithLLM } from './llm.mjs'
-import { fetchGroupNotices, sendGroupMsg } from './qqport.mjs'
+import { fetchGroupNotices, pickActionNotice, sendGroupMsg } from './qqport.mjs'
 import { screenOutbound } from './exitgate.mjs'
 
 // ---------- 配置（KV 表，面板可改，重启仍生效） ----------
@@ -179,7 +179,8 @@ export async function collectActions(db, campaignId, opts = {}) {
       WHERE campaign_id = ? AND kind = 'private' ORDER BY class`
   ).all(campaignId)
   if (!groups.length) throw new Error('本战役没有登记私组群映射（先在面板配置群映射）')
-  if (!napcatBase) throw new Error('未配置 NapCat HTTP 地址（agent 配置 napcatHttpBase）')
+  // napcatBase 为空也允许：qqport.callNapcat 会优先走 WS 通道（正向 WS 已连接时），
+  // 只有 WS 也不可用时才会因无 HTTP 地址而报错
 
   const budget = Number(cfg.agentTokenBudget) || 20000
   let tokens = 0
@@ -202,12 +203,12 @@ export async function collectActions(db, campaignId, opts = {}) {
     }
     rows.push(row)
     try {
-      // 1) 读最新公告
+      // 1) 读公告列表，分拣出最新的"行动公告"（状态记录公告不算交行动）
       const notices = await ports.fetchNotices(napcatBase, g.group_id)
-      const latest = notices[0] ?? null
-      const text = latest?.text ?? ''
+      const actionNotice = pickActionNotice(notices)
+      const text = actionNotice?.text ?? ''
       logMessage(db, { campaignId, channel: 'notice', groupId: g.group_id, groupName: g.group_name, content: text })
-      if (!text) continue // 未交，留给最后催办
+      if (!text) continue // 没有行动类公告 = 未交，留给最后催办
       row.submitted = true
 
       // 2) 幂等：同一条公告（hash 相同 + 同时段）处理过就跳过登记
@@ -228,48 +229,74 @@ export async function collectActions(db, campaignId, opts = {}) {
       const registeredKeys = []
       const rulingNotes = []
 
+      // 第一遍：纯解析不落库（按 从者/御主 前缀分段，各自用对应单位键；
+      // 没写前缀的公告整段算从者，与面板手选单位的习惯一致）
+      const pendingStandards = []   // {unitKey, s} 规则解析成功待登记
+      const pendingFailures = []    // {unitKey, f} 解析失败待 LLM/裁决
       for (const { role, part } of parts) {
         const unitKey = `${unitBase}${role === '御主' ? '御' : '从'}`
         const { standards, failures } = standardizeAnnouncement(db, part, { campaignId, round, phase, unitKey })
+        for (const s of standards) pendingStandards.push({ unitKey, s })
+        for (const f of failures) pendingFailures.push({ unitKey, f })
+      }
 
-        // 3a) 纯规则成功的直接登记（带查重）
-        for (const s of standards) {
-          if (hasDuplicateAction(db, campaignId, round, phase, unitKey, s.actionKey, s.target, s.fragment)) {
-            row.duplicates++
-            continue
-          }
-          const id = insertAction(db, campaignId, round, phase, unitKey, s.actionKey, s.target, null, s.fragment)
-          row.registered++
-          registeredKeys.push({ id, unitKey, actionKey: s.actionKey, target: s.target, from: 'rule' })
+      // 第二遍：有新登记内容才作废该组旧行动（群公告=整篇替换语义；
+      // 解析全失败时不清旧行动，防止玩家写了格式不对的公告把行动清没）
+      if (pendingStandards.length) {
+        const v = db.prepare(`
+          UPDATE engine_actions SET status = 'void'
+          WHERE campaign_id = ? AND round = ? AND phase = ?
+            AND unit_key LIKE ? AND status = 'declared'
+        `).run(campaignId, round, phase, `${unitBase}%`)
+        if (v.changes > 0) row.voided = v.changes
+      }
+
+      // 第三遍：登记规则成功的（带查重）
+      for (const { unitKey, s } of pendingStandards) {
+        if (hasDuplicateAction(db, campaignId, round, phase, unitKey, s.actionKey, s.target, s.fragment)) {
+          row.duplicates++
+          continue
         }
+        const id = insertAction(db, campaignId, round, phase, unitKey, s.actionKey, s.target, null, s.fragment)
+        row.registered++
+        registeredKeys.push({ id, unitKey, actionKey: s.actionKey, target: s.target, from: 'rule' })
+      }
 
-        // 3b) 失败片段：LLM 兜底（预算内 + 开关开），否则进需裁决
-        for (const f of failures) {
-          const canLlm = cfg.agentLlmEnabled === '1' && tokens < budget
-          let llmOk = false
-          if (canLlm) {
-            const verbs = db.prepare(`SELECT action_key FROM action_rules ORDER BY action_key`).all().map(r => r.action_key)
-            const leylines = db.prepare(`SELECT name FROM leyline WHERE campaign_id = ?`).all(campaignId).map(r => r.name)
-            const llm = await parseWithLLM(f.fragment, { verbs, leylines, unitKey, round, phase })
-            tokens += llm.tokens ?? 0
-            if (llm.tokens) { row.llmUsed++; logAgent(db, runId, campaignId, 'llm_parse', g.group_id, llm.ok, { fragment: f.fragment, actions: llm.actions ?? [], error: llm.error ?? null }, llm.tokens) }
-            for (const a of (llm.actions ?? [])) {
-              // 白名单校验：动词必须在 action_rules 里才可信
-              const rule = db.prepare(`SELECT action_key FROM action_rules WHERE action_key = ?`).get(String(a.verb ?? '').trim())
-              if (!rule) continue
-              if (hasDuplicateAction(db, campaignId, round, phase, unitKey, rule.action_key, a.target ?? null, f.fragment)) { row.duplicates++; continue }
-              const id = insertAction(db, campaignId, round, phase, unitKey, rule.action_key, a.target ?? null, null, f.fragment)
-              row.registered++
-              llmOk = true
-              registeredKeys.push({ id, unitKey, actionKey: rule.action_key, target: a.target ?? null, from: 'llm' })
-            }
+      // 第四遍：失败片段 LLM 兜底（预算内 + 开关开），否则进需裁决
+      for (const { unitKey, f } of pendingFailures) {
+        const canLlm = cfg.agentLlmEnabled === '1' && tokens < budget
+        let llmOk = false
+        if (canLlm) {
+          const verbs = db.prepare(`SELECT action_key FROM action_rules ORDER BY action_key`).all().map(r => r.action_key)
+          const leylines = db.prepare(`SELECT name FROM leyline WHERE campaign_id = ?`).all(campaignId).map(r => r.name)
+          const llm = await parseWithLLM(f.fragment, { verbs, leylines, unitKey, round, phase })
+          tokens += llm.tokens ?? 0
+          if (llm.tokens) { row.llmUsed++; logAgent(db, runId, campaignId, 'llm_parse', g.group_id, llm.ok, { fragment: f.fragment, actions: llm.actions ?? [], error: llm.error ?? null }, llm.tokens) }
+          for (const a of (llm.actions ?? [])) {
+            // 白名单校验：动词必须在 action_rules 里才可信
+            const rule = db.prepare(`SELECT action_key FROM action_rules WHERE action_key = ?`).get(String(a.verb ?? '').trim())
+            if (!rule) continue
+            if (hasDuplicateAction(db, campaignId, round, phase, unitKey, rule.action_key, a.target ?? null, f.fragment)) { row.duplicates++; continue }
+            const id = insertAction(db, campaignId, round, phase, unitKey, rule.action_key, a.target ?? null, null, f.fragment)
+            row.registered++
+            llmOk = true
+            registeredKeys.push({ id, unitKey, actionKey: rule.action_key, target: a.target ?? null, from: 'llm' })
           }
-          // LLM 也没救回来的 → 需裁决（带 LLM 备注/原文，GM 拍板）
-          if (!llmOk) {
+        }
+        // LLM 也没救回来的 → 需裁决（带 LLM 备注/原文，GM 拍板）
+        // 防重：同一单位+同一片段已有 open 裁决就不重复插入（否则每跑一次翻倍）
+        if (!llmOk) {
+          const context = `${unitKey} 片段"${f.fragment}": ${f.message}`
+          const dup = db.prepare(
+            `SELECT id FROM engine_pending_ruling WHERE campaign_id = ? AND status = 'open' AND context = ? LIMIT 1`
+          ).get(campaignId, context)
+          if (dup) {
+            row.rulings++ // 已有同样的裁决待处理，计数但不重复入队
+          } else {
             const info = db.prepare(
               `INSERT INTO engine_pending_ruling (campaign_id, round, phase, kind, context, ai_guess)
                VALUES (?,?,?,?,?,?)`
-            ).run(campaignId, round, phase, 'parse_fail', `${unitKey} 片段"${f.fragment}": ${f.message}`, canLlm ? 'LLM 未能给出可信解析' : null)
+            ).run(campaignId, round, phase, 'parse_fail', context, canLlm ? 'LLM 未能给出可信解析' : null)
             row.rulings++
             rulingNotes.push({ rulingId: info.lastInsertRowid, fragment: f.fragment })
           }
@@ -328,6 +355,7 @@ export async function collectActions(db, campaignId, opts = {}) {
     totals: {
       submitted: rows.filter(r => r.submitted).length,
       registered: rows.reduce((n, r) => n + r.registered, 0),
+      voided: rows.reduce((n, r) => n + (r.voided || 0), 0),
       duplicates: rows.reduce((n, r) => n + r.duplicates, 0),
       rulings: rows.reduce((n, r) => n + r.rulings, 0),
       llmCalls: rows.reduce((n, r) => n + r.llmUsed, 0),

@@ -12,8 +12,12 @@ const characterStatus = require('./routes/characterStatus');
 const actionSubmissions = require('./routes/actionSubmissions');
 const actionRecords = require('./routes/actionRecords');
 const skillTemplates = require('./routes/skillTemplates');
+const skillSubmissions = require('./routes/skillSubmissions');
+const skillAliases = require('./routes/skillAliases');
 const qqBindings = require('./routes/qqBindings');
 const kb = require('./routes/kb');
+const onebotRoutes = require('./lib/onebot/routes');
+const onebotService = require('./lib/onebot/service');
 
 const app = express();
 const PORT = process.env.PORT || 8100;
@@ -67,6 +71,16 @@ app.get('/api', (req, res) => {
       'GET    /api/skill-templates/:id',
       'PUT    /api/skill-templates/:id',
       'DELETE /api/skill-templates/:id',
+      'GET    /api/skill-submissions',
+      'POST   /api/skill-submissions (玩家提交)',
+      'POST   /api/skill-submissions/preview (试解析)',
+      'PUT    /api/skill-submissions/:id/items (GM 修正)',
+      'POST   /api/skill-submissions/:id/confirm',
+      'POST   /api/skill-submissions/:id/discard',
+      'DELETE /api/skill-submissions/:id',
+      'GET    /api/skill-aliases',
+      'POST   /api/skill-aliases',
+      'DELETE /api/skill-aliases/:id',
       'GET    /api/qq-bindings',
       'POST   /api/qq-bindings',
       'GET    /api/qq-bindings/campaign/:campaignId',
@@ -75,6 +89,10 @@ app.get('/api', (req, res) => {
       'POST   /api/kb/rebuild',
       'GET    /api/kb/search',
       'POST   /api/kb/advise',
+      'GET    /api/onebot/config',
+      'PUT    /api/onebot/config',
+      'GET    /api/onebot/status',
+      'POST   /api/onebot/restart',
     ],
   });
 });
@@ -90,8 +108,12 @@ app.use('/api/character-status', characterStatus);
 app.use('/api/action-submissions', actionSubmissions);
 app.use('/api/action-records', actionRecords);
 app.use('/api/skill-templates', skillTemplates);
+app.use('/api/skill-submissions', skillSubmissions);
+app.use('/api/skill-aliases', skillAliases);
 app.use('/api/qq-bindings', qqBindings);
 app.use('/api/kb', kb);
+// QQ 指令机器人：连接配置/状态/重启接口（群指令处理不走 HTTP，由 service 直连 NapCat WS）
+app.use('/api/onebot', onebotRoutes);
 
 // 引擎路由：同步注册占位（必须在 SPA fallback 之前，否则引擎 GET 会被通配吞掉）
 const engineRouter = express.Router();
@@ -121,10 +143,12 @@ const frontendDist = process.env.FATE_FRONTEND_DIST || path.join(__dirname, '..'
 app.use(express.static(frontendDist, { index: false }));
 
 // SPA fallback：非 API 请求都返回 index.html
+// index.html 必须 no-cache：它引用的 JS/CSS 文件名带 hash，缓存旧 html 会加载不到新版前端
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api')) return res.status(404).json({ error: '接口不存在' });
   const indexPath = path.join(frontendDist, 'index.html');
   if (require('fs').existsSync(indexPath)) {
+    res.set('Cache-Control', 'no-cache');
     res.sendFile(indexPath);
   } else {
     res.status(200).send(`
@@ -149,4 +173,6 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   console.log(`后端运行在 http://localhost:${PORT}`);
   console.log(`API 列表: http://localhost:${PORT}/api`);
+  // QQ 指令机器人：随后端启动（读 app_settings 里的连接配置，未启用则只打一行提示）
+  onebotService.start();
 });

@@ -309,7 +309,44 @@ function initSchema(db) {
     source_section: 'TEXT',
     // 宝具子类型（对人/对军/对城…），用于 5.2.3.1 宝具类型结算链排序
     np_type: 'TEXT',
+    // 每回合最大发动次数：1=默认只能发一次；0=不限次数（魔境这类可反复用）
+    max_uses_per_round: 'INTEGER DEFAULT 1',
   });
+
+  // 技能别名表：玩家提交技能常用缩写（"空花"=空中花园），用来把缩写映射回模板
+  // campaign_id 为空 = 全局别名（所有战役通用）；填了 = 只在该战役生效
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS skill_alias (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      alias_text TEXT NOT NULL,
+      template_id INTEGER NOT NULL REFERENCES skill_template(id),
+      campaign_id INTEGER REFERENCES campaign(id),
+      source TEXT DEFAULT 'manual',
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(alias_text, template_id, campaign_id)
+    );
+  `);
+
+  // 技能提交记录表：玩家在 QQ 发的技能提交原文 + 解析结果，GM 确认后才算数
+  // status: pending=待确认 / confirmed=已确认 / discarded=已丢弃
+  // items_json 每条结构：{ aliasText, grade, segments, templateId, templateName,
+  //   matchType, candidates, duplicate }（segments=null 表示全段发动，数组表示只发指定段）
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS skill_submission (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      campaign_id INTEGER NOT NULL REFERENCES campaign(id),
+      round_id INTEGER,
+      qq_user TEXT,
+      unit_key TEXT,
+      raw_text TEXT NOT NULL,
+      items_json TEXT NOT NULL DEFAULT '[]',
+      status TEXT NOT NULL DEFAULT 'pending',
+      has_duplicate INTEGER DEFAULT 0,
+      confirmed_at TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
 }
 
 function ensureColumns(db, tableName, columns) {

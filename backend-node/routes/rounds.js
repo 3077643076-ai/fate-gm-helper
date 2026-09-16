@@ -21,6 +21,17 @@ router.get('/current', (req, res) => {
   res.json({ round: formatRound(round) });
 });
 
+// 全部回合列表（含状态）——"收回合"下拉、回合进度展示用
+router.get('/list', (req, res) => {
+  const db = getDb();
+  const campaignId = parseRequiredId(req.query.campaignId, 'campaignId', res);
+  if (campaignId === null) return;
+  const rows = db.prepare(
+    'SELECT * FROM campaign_round WHERE campaign_id = ? ORDER BY turn_number ASC'
+  ).all(campaignId);
+  res.json(rows.map(formatRound));
+});
+
 // 创建下一回合
 router.post('/next', (req, res) => {
   const db = getDb();

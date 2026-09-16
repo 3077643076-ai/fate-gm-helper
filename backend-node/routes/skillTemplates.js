@@ -61,11 +61,11 @@ router.post('/', (req, res) => {
   const result = db.prepare(`
     INSERT INTO skill_template (
       name, rank, skill_type, np_type, timing, position_limit,
-      mana_cost, cooldown, stat_modifiers,
+      mana_cost, cooldown, max_uses_per_round, stat_modifiers,
       win_rate_modifier, enemy_win_rate_modifier,
       status_effects, effects_json, conditions_json, manual_judgment,
       source_book, source_section, raw_text, notes
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     payload.name,
     payload.rank,
@@ -75,6 +75,7 @@ router.post('/', (req, res) => {
     payload.positionLimit,
     payload.manaCost,
     payload.cooldown,
+    payload.maxUsesPerRound,
     payload.statModifiers,
     payload.winRateModifier,
     payload.enemyWinRateModifier,
@@ -112,6 +113,7 @@ router.put('/:id', (req, res) => {
       position_limit = ?,
       mana_cost = ?,
       cooldown = ?,
+      max_uses_per_round = ?,
       stat_modifiers = ?,
       win_rate_modifier = ?,
       enemy_win_rate_modifier = ?,
@@ -134,6 +136,7 @@ router.put('/:id', (req, res) => {
     payload.positionLimit,
     payload.manaCost,
     payload.cooldown,
+    payload.maxUsesPerRound,
     payload.statModifiers,
     payload.winRateModifier,
     payload.enemyWinRateModifier,

@@ -5,7 +5,7 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js",
-    "test": "node test/skillTemplateNormalizer.test.js",
+    "test": "node test/skillTemplateNormalizer.test.js && node test/onebotCommands.test.js",
     "backup": "node scripts/backup-db.js",
     "build-kb": "node scripts/build-kb.js"
   },

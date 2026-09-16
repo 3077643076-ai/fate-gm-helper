@@ -25,6 +25,13 @@ function parseJsonText(value, fallback) {
   }
 }
 
+// 每回合最大发动次数：0=不限次数，正整数=次数上限，其他一律回落到默认 1 次
+function resolveMaxUsesPerRound(value) {
+  const n = Number(value);
+  if (Number.isFinite(n) && n >= 0 && Number.isInteger(n)) return n;
+  return 1;
+}
+
 function normalizeSkillTemplatePayload(body) {
   return {
     name: cleanText(body.name),
@@ -36,6 +43,8 @@ function normalizeSkillTemplatePayload(body) {
     positionLimit: cleanText(body.positionLimit),
     manaCost: Number(body.manaCost) || 0,
     cooldown: Number(body.cooldown) || 0,
+    // 每回合最大发动次数：0=不限（魔境这类），缺省=1；注意 Number(0)||1 会把 0 吃掉，必须先判
+    maxUsesPerRound: resolveMaxUsesPerRound(body.maxUsesPerRound),
     statModifiers: cleanJsonText(body.statModifiers, {}),
     winRateModifier: Number(body.winRateModifier) || 0,
     enemyWinRateModifier: Number(body.enemyWinRateModifier) || 0,
@@ -61,6 +70,7 @@ function formatSkillTemplateRow(row) {
     positionLimit: row.position_limit,
     manaCost: row.mana_cost ?? 0,
     cooldown: row.cooldown ?? 0,
+    maxUsesPerRound: row.max_uses_per_round ?? 1,
     statModifiers: row.stat_modifiers,
     winRateModifier: row.win_rate_modifier ?? 0,
     enemyWinRateModifier: row.enemy_win_rate_modifier ?? 0,

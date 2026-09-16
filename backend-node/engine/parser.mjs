@@ -38,15 +38,17 @@ function cleanFragment(frag) {
 }
 
 /**
- * 公告预处理：剥离"从者：/御主："角色前缀与时段头（"第N天昼"/"day1昼"），
+ * 公告预处理：剥离"从者：/御主：/英灵："角色前缀与时段头（"第N天昼"/"day1昼"），
  * 按 | 分段（真实公告的常见结构），输出干净的候选片段
  */
 export function preprocessAnnouncement(text) {
   let t = String(text ?? '').trim()
   // 去时段头（开头或竖线段首："第1天昼"、"day1夜"、"第一日昼"）
   t = t.replace(/(?:^|\|)\s*(?:第\s*[0-9一二三四五六七八九]+\s*[天日]|day\s*\d+)\s*(?:昼|夜)?\s*/gi, '|')
-  // 角色前缀 → 换成分段标记（从者：X 御主：Y = 两条行动；空格分隔同样识别）
-  t = t.replace(/(从者|御主)\s*[:：]?\s*/g, '|')
+  // 段首独立"行动"标头剥离（狂组写法："行动 御主:长坂坡征兵"）
+  t = t.replace(/(?:^|\|)\s*行动\s*[:：]?\s*/g, '|')
+  // 角色前缀 → 换成分段标记（从者：X 御主：Y = 两条行动；空格分隔同样识别；狂从自称"英灵："）
+  t = t.replace(/(从者|御主|英灵)\s*[:：]?\s*/g, '|')
   // 竖线分段
   const segs = t.split(/\|/).map(s => s.trim()).filter(Boolean)
   // 每段内部再按顿号/逗号细切（如 "阵地制作，同时额外宣言俩次"）
@@ -93,7 +95,12 @@ export function splitAnnouncement(text) {
 
   // 2) 换行
   const lines = t.split(/\r?\n/).map(s => cleanFragment(s.trim())).filter(Boolean)
-  if (lines.length > 1) return lines
+  if (lines.length > 1) {
+    // 每行递归再切（行内可能还有时段头/前缀/逗号，如"day2夜\n从者：干涉许都"）
+    const out = []
+    for (const line of lines) out.push(...splitAnnouncement(line))
+    return out
+  }
 
   // 3) 序号列表（1. 2. / 1、2、）
   const numRe = /(?:^|\s)\d[.、)]\s*/g
@@ -187,21 +194,117 @@ export function standardizeAnnouncement(db, text, opts = {}) {
   return { standards, failures: parsed.failures }
 }
 
+/** 可用动词集合（白名单 + action 别名首词 + 别名字面），惰性缓存 60 秒——用于动词前缀/尾缀匹配 */
+let cachedVerbs = null
+let cachedVerbsAt = 0
+function allActionVerbs(db) {
+  if (cachedVerbs && Date.now() - cachedVerbsAt < 60000) return cachedVerbs
+  const keys = db.prepare('SELECT action_key FROM action_rules').all().map(r => r.action_key)
+  const aliasRows = db.prepare(`SELECT DISTINCT alias, canonical FROM alias_registry WHERE kind = 'action'`).all()
+  const inRules = db.prepare('SELECT 1 FROM action_rules WHERE action_key = ?')
+  const isActionAlias = db.prepare(`SELECT 1 FROM alias_registry WHERE alias = ? AND kind = 'action'`)
+  const aliasVerbs = aliasRows
+    .flatMap(r => [r.canonical.split(/\s+/)[0], r.alias])
+    .filter(v => inRules.get(v) || isActionAlias.get(v))
+  cachedVerbs = [...new Set([...keys, ...aliasVerbs])].sort((a, b) => b.length - a.length) // 长词优先
+  cachedVerbsAt = Date.now()
+  return cachedVerbs
+}
+
 /**
  * 解析单条行动文本（"动词 目标"格式；多行动公告请用 parseAnnouncement）
+ * 真实写法兼容：动词与目标可用空格/-/—/:：/连写（"机动-邺城"、"情报调查:二哈"、
+ * "干涉灵脉 许都"——动词后带"灵脉"量词尾巴）、动词直接连写（"干涉白帝城"、"制作月灵髓液"）、
+ * 动词尾缀（"镜中双影工坊建设"）等多种分隔
  */
 export function parseAction(db, rawText, opts = {}) {
   let text = String(rawText ?? '').trim()
   // 去掉指令前缀
   text = text.replace(/^([.。]?\s*(?:行动|从者行动|御主行动)\s*)/, '').trim()
+  // 残留时段头剥离（换行切分后的"day2夜"这类片段）
+  text = text.replace(/^(?:第\s*[0-9一二三四五六七八九]+\s*[天日]|day\s*\d+)\s*(?:昼|夜)?\s*/i, '').trim()
   if (!text) return { ok: false, needRuling: true, kind: 'parse_fail', message: '行动内容为空' }
 
-  // 切分：第一个空格前=动词候选，其余=目标
-  const parts = text.split(/\s+/)
-  let verbToken = parts[0]
-  let targetToken = parts.slice(1).join(' ') || null
+  // 生成动词候选列表：原始切分 + 各种真实写法的拆分变体
+  const candidates = []
+  const firstSpace = text.split(/\s+/)
+  candidates.push({ verb: firstSpace[0], target: firstSpace.slice(1).join(' ') || null })
+  // 连写拆分：动词-目标 / 动词:目标 / 动词—目标（第一个分隔符处切）
+  const sep = text.match(/^([^\s\-—:：]+?)\s*[-—:：]\s*(.+)$/)
+  if (sep) candidates.push({ verb: sep[1], target: sep[2].trim() || null })
+  // 动词带"灵脉"量词尾巴："干涉灵脉 许都" → 动词"干涉" 目标"灵脉 许都"→归一时剥"灵脉"
+  const lingui = text.match(/^([^\s]+?)灵脉\s+(.+)$/)
+  if (lingui) candidates.push({ verb: lingui[1], target: lingui[2].trim() || null })
+  // 动词前缀连写："干涉白帝城"/"制作月灵髓液"/"机动邺城"（无任何分隔符，动词开头）
+  const verbs = allActionVerbs(db)
+  const prefixHit = verbs.find(v => text.startsWith(v) && text.length > v.length)
+  if (prefixHit) candidates.push({ verb: prefixHit, target: text.slice(prefixHit.length).trim() || null })
+  // 动词尾缀："镜中双影工坊建设" → 建设+镜中双影工坊
+  const suffixHit = verbs.find(v => text.endsWith(v) && text.length > v.length)
+  if (suffixHit) candidates.push({ verb: suffixHit, target: text.slice(0, text.length - suffixHit.length).trim() || null })
 
-  // 动词归一：先查别名（可能命中"动词 目标"复合格式，如 "搓空花"→"解放 虚荣的空中庭院"）
+  // 逐候选尝试解析（别名 → 白名单），命中即用
+  let parsed = null
+  for (const cand of candidates) {
+    const r = tryParseVerb(db, cand.verb, cand.target, opts)
+    if (r) {
+      parsed = r
+      break
+    }
+  }
+  if (!parsed) {
+    return {
+      ok: false, needRuling: true, kind: 'parse_fail',
+      message: `动词"${candidates[0].verb}"不在行动白名单（已尝试别名归一与连写拆分）`,
+    }
+  }
+
+  const { actionKey, variant, targetToken } = parsed
+
+  // 动词可能整体是别名指向带括号的规范名（如 "开殿"→"他者封印·鲜血神殿(解放)"）
+  const finalKey = actionKey.replace(/\(.*\)$/, '')
+
+  // 白名单校验
+  const rule = db.prepare(`SELECT action_key, who, base_rate, rate_formula, day_bonus, night_bonus, costs_action, mana_cost, mana_gain, phase, limit_per, effect_text FROM action_rules WHERE action_key = ?`).get(finalKey)
+  if (!rule) {
+    return {
+      ok: false, needRuling: true, kind: 'parse_fail',
+      message: `动词"${candidates[0].verb}"归一为"${finalKey}"但不在 action_rules（未录入口径）`,
+    }
+  }
+
+  // 目标归一（灵脉类目标）
+  let target = targetToken
+  let targetNote = null
+  if (targetToken) {
+    const t = targetToken.replace(/^灵脉[-—]?/, '').trim() || targetToken // "灵脉 许都"→"许都"
+    const aliasTarget = normalizeByAlias(db, t)
+    if (aliasTarget) target = aliasTarget.canonical
+    const ley = normalizeLeyline(db, t, opts.campaignId)
+    if (ley) target = typeof ley === 'string' ? ley : null
+    if (ley && typeof ley !== 'string') targetNote = `目标歧义：${ley.ambiguous.join('/')}`
+  }
+
+  return {
+    ok: true,
+    action: {
+      campaignId: opts.campaignId ?? 999002,
+      round: opts.round,
+      phase: opts.phase,
+      unitKey: opts.unitKey,
+      actionKey: finalKey,
+      target,
+      variant,
+      rawText: text,
+      targetNote,
+      rule,
+    },
+  }
+}
+
+/** 尝试解析动词候选（别名/白名单/魂食变体）；命中返回 { actionKey, variant, targetToken }，未命中 null */
+function tryParseVerb(db, verbToken, targetToken, opts) {
+  if (!verbToken) return null
   let actionKey = null
   let variant = null
   const aliasHit = normalizeByAlias(db, verbToken)
@@ -227,49 +330,6 @@ export function parseAction(db, rawText, opts = {}) {
     const v = verbToken.replace(/^魂食/, '')
     if (v) variant = v
   }
-  if (!actionKey) {
-    return {
-      ok: false, needRuling: true, kind: 'parse_fail',
-      message: `动词"${verbToken}"不在行动白名单（已尝试别名归一）`,
-    }
-  }
-
-  // 动词可能整体是别名指向带括号的规范名（如 "开殿"→"他者封印·鲜血神殿(解放)"）
-  actionKey = actionKey.replace(/\(.*\)$/, '')
-
-  // 白名单校验
-  const rule = db.prepare(`SELECT action_key, who, base_rate, rate_formula, day_bonus, night_bonus, costs_action, mana_cost, mana_gain, phase, limit_per, effect_text FROM action_rules WHERE action_key = ?`).get(actionKey)
-  if (!rule) {
-    return {
-      ok: false, needRuling: true, kind: 'parse_fail',
-      message: `动词"${verbToken}"归一为"${actionKey}"但不在 action_rules（未录入口径）`,
-    }
-  }
-
-  // 目标归一（灵脉类目标）
-  let target = targetToken
-  let targetNote = null
-  if (targetToken) {
-    const aliasTarget = normalizeByAlias(db, targetToken)
-    if (aliasTarget) target = aliasTarget.canonical
-    const ley = normalizeLeyline(db, target, opts.campaignId)
-    if (ley) target = typeof ley === 'string' ? ley : null
-    if (ley && typeof ley !== 'string') targetNote = `目标歧义：${ley.ambiguous.join('/')}`
-  }
-
-  return {
-    ok: true,
-    action: {
-      campaignId: opts.campaignId ?? 999002,
-      round: opts.round,
-      phase: opts.phase,
-      unitKey: opts.unitKey,
-      actionKey,
-      target,
-      variant,
-      rawText: text,
-      targetNote,
-      rule,
-    },
-  }
+  if (!actionKey) return null
+  return { actionKey, variant, targetToken }
 }

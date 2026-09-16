@@ -1,0 +1,486 @@
+// NapCat 托管模块（海豹式"网页扫码登录"的实现层）
+// 职责：
+//   1. launch：从工作台拉起本机 NapCat（用户在设置里指定 NapCat 目录）
+//   2. ensureOnebotConfig：预写 config/onebot11.json（正向 WS 指向工作台），登录后自动可用
+//   3. getWebuiInfo：读 NapCat 的 config/webui.json 拿 token 和端口（官方文档确认的约定）
+//   4. getLoginQrcode：尝试调 NapCat WebUI 接口拿登录二维码（best-effort，
+//      WebUI 接口非公开文档，失败时前端降级为"打开 NapCat 扫码页"按钮）
+// 依据：https://napneko.github.io/config/basic —— webui.json / onebot11.json 的位置与格式
+
+const { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSync } = require('node:fs');
+const { join } = require('node:path');
+const crypto = require('node:crypto');
+const { spawn } = require('node:child_process');
+
+// 当前拉起的 NapCat 进程句柄（工作台退出时由 service 统一处理，这里只管启动）
+let napcatProc = null;
+
+// ---------- 目录探测 ----------
+
+// 在 NapCat 目录下找 config 目录（有的包解压后带一层子目录，如 NapCat.x.x.Shell/）
+function findConfigDir(napcatDir) {
+  const direct = join(napcatDir, 'config');
+  if (existsSync(direct)) return direct;
+  try {
+    for (const name of readdirSync(napcatDir)) {
+      const sub = join(napcatDir, name, 'config');
+      if (existsSync(sub)) return sub;
+    }
+  } catch { /* 目录不可读就当没有 */ }
+  return null;
+}
+
+// ---------- OneBot 网络配置预写 ----------
+
+// 预写/升级 onebot11 配置（v4.5.3+ 支持）
+// 目标文件优先级：onebot11_<QQ号>.json（账号专属，NapCat 优先读它）> onebot11.json（兜底）
+// 内容：正向 WS（指令机器人收发）+ HTTP 服务端（读公告/发消息/催交用）
+// 已存在时不整体覆盖，但缺 HTTP/WS 服务端时会自动补上（幂等升级）
+function ensureOnebotConfig({ napcatDir, wsPort, wsToken, qqNumber }) {
+  const configDir = findConfigDir(napcatDir);
+  if (!configDir) return { ok: false, reason: 'NapCat 目录下没找到 config 目录，请确认目录正确' };
+  // 有 QQ 号就锁定账号专属文件（NapCat 读它就不读兜底文件了）
+  const target = join(configDir, qqNumber ? `onebot11_${qqNumber}.json` : 'onebot11.json');
+
+  const httpServer = {
+    name: 'GM工作台HTTP',
+    enable: true,
+    port: 3000,
+    host: '127.0.0.1',
+    enableCors: true,
+    enableWebsocket: true,
+    messagePostFormat: 'array',
+    token: wsToken || '',
+    debug: false,
+  };
+  const wsServer = {
+    name: 'GM工作台',
+    enable: true,
+    host: '127.0.0.1',
+    port: wsPort,
+    messagePostFormat: 'array',
+    reportSelfMessage: false,
+    token: wsToken || '',
+    enableForcePushEvent: true,
+    debug: false,
+    heartInterval: 30000,
+  };
+
+  // 已存在：读入，缺哪块补哪块（不覆盖用户自己加过的其它网络配置）
+  if (existsSync(target)) {
+    try {
+      const cleaned = readFileSync(target, 'utf8').replace(/^\s*\/\/.*$/gm, '');
+      const parsed = JSON.parse(cleaned);
+      parsed.network = parsed.network || {};
+      let changed = false;
+      if (!Array.isArray(parsed.network.httpServers) || parsed.network.httpServers.length === 0) {
+        parsed.network.httpServers = [httpServer];
+        changed = true;
+      }
+      if (!Array.isArray(parsed.network.websocketServers) || parsed.network.websocketServers.length === 0) {
+        parsed.network.websocketServers = [wsServer];
+        changed = true;
+      }
+      if (changed) {
+        writeFileSync(target, JSON.stringify(parsed, null, 2), 'utf8');
+        return { ok: true, upgraded: true, written: target };
+      }
+      return { ok: true, skipped: true };
+    } catch (e) {
+      return { ok: false, reason: `现有 onebot11.json 解析失败（${e.message}），请手工检查或删除它后重试` };
+    }
+  }
+
+  // 不存在：全新写入
+  const payload = {
+    network: {
+      httpServers: [httpServer],
+      httpClients: [],
+      websocketServers: [wsServer],
+      websocketClients: [],
+    },
+    musicSignUrl: '',
+    enableLocalFile2Url: false,
+    parseMultMsg: false,
+  };
+  try {
+    writeFileSync(target, JSON.stringify(payload, null, 2), 'utf8');
+    return { ok: true, written: target };
+  } catch (e) {
+    return { ok: false, reason: e.message };
+  }
+}
+
+// ---------- WebUI 信息 ----------
+
+// 读 config/webui.json：{ host, port, token, loginRate }（官方文档确认的结构）
+function getWebuiInfo(napcatDir) {
+  const configDir = findConfigDir(napcatDir);
+  if (!configDir) return null;
+  const target = join(configDir, 'webui.json');
+  if (!existsSync(target)) return null;
+  try {
+    const raw = readFileSync(target, 'utf8');
+    // webui.json 官方示例带注释（json5），用宽松解析：去掉 // 注释再 parse
+    const cleaned = raw.replace(/^\s*\/\/.*$/gm, '');
+    const parsed = JSON.parse(cleaned);
+    return {
+      port: parsed.port || 6099,
+      token: parsed.token || '',
+      host: parsed.host || '127.0.0.1',
+    };
+  } catch {
+    return null;
+  }
+}
+
+// 探测 NapCat 是否已在跑（WebUI 端口可达即认为在跑）
+async function isWebuiRunning(port) {
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(1200) });
+    return res.status < 500;
+  } catch {
+    return false;
+  }
+}
+
+// ---------- 登录二维码 ----------
+
+// 二维码 PNG 文件路径：NapCat 启动未登录时会把它写到 <目录>/cache/qrcode.png
+// （实测确认，比 WebUI 未公开接口稳定得多）；过期时 NapCat 会覆盖刷新这个文件
+function getQrcodeFilePath(napcatDir) {
+  const hit = join(napcatDir, 'cache', 'qrcode.png');
+  return existsSync(hit) ? hit : null;
+}
+
+/**
+ * 取登录二维码（给前端 <img> 显示）：
+ *   1) 优先读 cache/qrcode.png 文件（10 分钟内视为有效，返回 mtime 供前端判断是否刷新）
+ *   2) 文件没有/太旧 → 尝试 NapCat WebUI 接口（best-effort，接口未公开文档，可能随版本变化）
+ */
+async function getLoginQrcode({ napcatDir }) {
+  // 1) 二维码文件
+  const file = getQrcodeFilePath(napcatDir);
+  if (file) {
+    const stat = statSync(file);
+    const ageMin = (Date.now() - stat.mtimeMs) / 60000;
+    if (ageMin < 10) {
+      const b64 = readFileSync(file).toString('base64');
+      return {
+        ok: true,
+        qrcode: `data:image/png;base64,${b64}`,
+        mtime: stat.mtimeMs,
+        source: 'file',
+      };
+    }
+  }
+
+  // 2) WebUI 接口兜底
+  const info = getWebuiInfo(napcatDir);
+  if (!info || !info.token) {
+    return { ok: false, reason: '还没拿到二维码（NapCat 启动中？），稍等会自动重试' };
+  }
+  const base = `http://127.0.0.1:${info.port}`;
+  const tokenSha256 = crypto.createHash('sha256').update(info.token).digest('hex');
+
+  // WebUI 登录：token 的 hash 形式不同版本有差异，raw 和 sha256 都试一遍
+  let credential = null;
+  for (const body of [{ token: tokenSha256 }, { token: info.token }]) {
+    try {
+      const res = await fetch(`${base}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(2500),
+      });
+      const data = await res.json().catch(() => null);
+      const cred = data?.data?.credential;
+      if (data?.code === 0 && cred) { credential = cred; break; }
+    } catch { /* 下一种形态再试 */ }
+  }
+  if (!credential) return { ok: false, reason: 'WebUI 登录失败（token 不匹配或接口版本不同）' };
+
+  try {
+    const res = await fetch(`${base}/api/QQLogin/GetQQLoginQcode?credential=${encodeURIComponent(credential)}`, {
+      headers: { Authorization: `Bearer ${credential}` },
+      signal: AbortSignal.timeout(2500),
+    });
+    const data = await res.json().catch(() => null);
+    const qrcode = data?.data?.qrcode;
+    if (qrcode) {
+      return {
+        ok: true,
+        // 带上 dataurl 前缀直接给 <img> 用；接口返回的可能是裸 base64
+        qrcode: qrcode.startsWith('data:') ? qrcode : `data:image/png;base64,${qrcode}`,
+        source: 'webui',
+      };
+    }
+    return { ok: false, reason: '接口没返回二维码（可能已登录或版本不同）' };
+  } catch (e) {
+    return { ok: false, reason: `取二维码失败：${e.message}` };
+  }
+}
+
+// ---------- 进程托管 ----------
+
+// 拉起 NapCat。启动器按优先级探测（实测结论）：
+//   launcher-user.bat（Shell 版用户模式，免管理员，实测可用）
+//   > napcat.bat / launcher.bat（OneKey 的 bat；launcher.bat 需管理员会自动 UAC）
+//   > NapCatWinBootMain.exe（OneKey 引导器，需先跑过 NapCatInstaller）
+// QQ 号作为参数传入（快速登录）；没填 QQ 号也能起（首次去 WebUI 扫码）
+function launchNapcat({ napcatDir, qqNumber }) {
+  if (napcatProc && !napcatProc.killed) {
+    return { ok: false, reason: 'NapCat 已在运行（由工作台拉起）' };
+  }
+  const candidates = [
+    { file: 'launcher-user.bat', args: qqNumber ? [String(qqNumber)] : [] },
+    { file: 'launcher-win10-user.bat', args: qqNumber ? [String(qqNumber)] : [] },
+    { file: 'napcat.bat', args: qqNumber ? [String(qqNumber)] : [] },
+    { file: 'launcher.bat', args: qqNumber ? [String(qqNumber)] : [] },
+    { file: 'NapCatWinBootMain.exe', args: qqNumber ? [String(qqNumber)] : [] },
+  ];
+  for (const c of candidates) {
+    const full = join(napcatDir, c.file);
+    if (!existsSync(full)) continue;
+    // 隐藏窗口拉起；bat 用 cmd 包装执行，控制台输出落日志文件便于排查
+    // 注意：重定向必须拼进整条命令字符串（数组参数模式下 cmd 不认 > 重定向）
+    const logFile = join(napcatDir, 'launch.log');
+    const isBat = c.file.endsWith('.bat');
+    const argStr = c.args.join(' ');
+    napcatProc = spawn(
+      'cmd.exe',
+      ['/c', `${isBat ? full : `"${full}"`} ${argStr} > "${logFile}" 2>&1`],
+      { cwd: napcatDir, windowsHide: true, detached: false, stdio: 'ignore' },
+    );
+    napcatProc.on('error', () => { napcatProc = null; });
+    napcatProc.on('exit', () => { napcatProc = null; });
+    return { ok: true, launcher: c.file };
+  }
+  return {
+    ok: false,
+    reason: '目录里没找到 launcher-user.bat / napcat.bat / NapCatWinBootMain.exe，请确认填的是 NapCat 解压目录',
+  };
+}
+
+function stopNapcat() {
+  if (napcatProc && !napcatProc.killed) {
+    try {
+      // 关键：用 taskkill /T 杀整棵进程树。launcher.bat(cmd) -> NapCatWinBootMain.exe
+      // -> QQ.exe 是三层嵌套，只 kill cmd 会留下孤儿实例继续占端口/登录
+      const { execSync } = require('node:child_process');
+      execSync(`taskkill /PID ${napcatProc.pid} /T /F`, { stdio: 'ignore', timeout: 10000 });
+    } catch { /* 进程可能已退出 */ }
+  }
+  napcatProc = null;
+}
+
+// 重启 NapCat（onebot11.json 改动后需要重启才生效）
+async function restartNapcat({ napcatDir, qqNumber }) {
+  stopNapcat();
+  // 等旧进程完全退出、端口释放
+  await new Promise(resolve => setTimeout(resolve, 1500));
+  return launchNapcat({ napcatDir, qqNumber });
+}
+
+// ---------- 自动下载安装（海豹级傻瓜化：用户零操作，点一个按钮全搞定） ----------
+
+// 安装状态（前端轮询展示进度）：idle=没在装 / downloading / extracting / done / error
+const installState = { phase: 'idle', progress: 0, message: '', startedAt: null };
+
+// NapCat 自动安装到的固定位置（工作台数据目录下，不污染用户目录）
+function defaultNapcatRoot() {
+  return join(__dirname, '..', '..', 'data', 'napcat');
+}
+
+// 找目录里的启动器（NapCatWinBootMain.exe / napcat.bat / launcher.bat），最多往下探两层
+function findLauncher(dir, depth = 0) {
+  if (depth > 2) return null;
+  let entries = [];
+  try { entries = readdirSync(dir); } catch { return null; }
+  for (const name of ['NapCatWinBootMain.exe', 'napcat.bat', 'launcher.bat']) {
+    if (entries.includes(name)) return { dir, launcher: name };
+  }
+  for (const name of entries) {
+    const hit = findLauncher(join(dir, name), depth + 1);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+// 已安装判定：napcatDir 有启动器，或默认位置已装过
+function detectInstalled(configuredDir) {
+  if (configuredDir) {
+    const hit = findLauncher(configuredDir, 0);
+    if (hit) return hit;
+  }
+  return findLauncher(defaultNapcatRoot(), 0);
+}
+
+// 拿 NapCat 最新版本号（GitHub API）；失败返回 null（调用方用兜底 tag）
+async function fetchLatestTag() {
+  try {
+    const res = await fetch('https://api.github.com/repos/NapNeko/NapCatQQ/releases/latest', {
+      headers: { 'User-Agent': 'fate-gm-helper' },
+      signal: AbortSignal.timeout(8000),
+    });
+    const data = await res.json();
+    return data?.tag_name || null;
+  } catch {
+    return null;
+  }
+}
+
+// 下载文件（跟随跳转），按 content-length 汇报进度百分比
+async function downloadFile(url, destFile) {
+  const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(600000) });
+  if (!res.ok) throw new Error(`下载失败 HTTP ${res.status}`);
+  const total = Number(res.headers.get('content-length')) || 0;
+  const buf = Buffer.allocUnsafe(total || 32 * 1024 * 1024);
+  let received = 0;
+  const chunks = [];
+  for await (const chunk of res.body) {
+    chunks.push(chunk);
+    received += chunk.length;
+    if (total) {
+      installState.progress = Math.min(99, Math.round((received / total) * 100));
+      installState.message = `下载 NapCat ${installState.progress}%`;
+    } else {
+      installState.message = `下载 NapCat ${(received / 1024 / 1024).toFixed(1)}MB`;
+    }
+  }
+  writeFileSync(destFile, Buffer.concat(chunks));
+}
+
+// 用 Windows 自带 tar 解压 zip（Win10 1803+ 自带）；失败兜底 PowerShell Expand-Archive
+function extractZip(zipFile, destDir) {
+  const { execSync } = require('node:child_process');
+  try {
+    execSync(`tar -xf "${zipFile}" -C "${destDir}"`, { stdio: 'ignore', timeout: 300000 });
+  } catch {
+    execSync(
+      `powershell -NoProfile -Command Expand-Archive -LiteralPath '${zipFile}' -DestinationPath '${destDir}' -Force`,
+      { stdio: 'ignore', timeout: 300000 },
+    );
+  }
+}
+
+/**
+ * 确保 NapCat 就绪：已装直接返回；没装就自动下载 + 解压。
+ * 包选择：本机装了 QQNT → 用 NapCat.Shell.zip（28MB，注入本机 QQ，launcher-user.bat 免管理员）；
+ *        没装 QQNT → 用 OneKey 包（自带 QQ，但要先跑 NapCatInstaller 配置，较重）。
+ * @param {string} configuredDir 用户在设置里填的目录（可空）
+ * @returns {{dir: string, launcher: string}} 可用的 NapCat 目录和启动器
+ */
+async function ensureNapcat(configuredDir) {
+  // 1) 已经装过（用户目录或默认位置）→ 直接用
+  const installed = detectInstalled(configuredDir);
+  if (installed) return installed;
+
+  // 2) 自动下载安装到默认位置
+  installState.phase = 'downloading';
+  installState.progress = 0;
+  installState.message = '正在获取 NapCat 版本…';
+  installState.startedAt = Date.now();
+  try {
+    const root = defaultNapcatRoot();
+    mkdirSync(root, { recursive: true });
+
+    // 本机 QQNT 检测：有就用 Shell 版（轻量 + 免管理员），没有才用 OneKey
+    const localQQ = 'C:\\Program Files\\Tencent\\QQNT\\QQ.exe';
+    const useShell = existsSync(localQQ);
+    const assetName = useShell ? 'NapCat.Shell.zip' : 'NapCat.Shell.Windows.OneKey.zip';
+
+    const tag = (await fetchLatestTag()) || '';
+    const candidates = [];
+    if (tag) candidates.push(`https://github.com/NapNeko/NapCatQQ/releases/download/${tag}/${assetName}`);
+    // 兜底：不带 tag 的 latest 重定向（GitHub 支持 releases/latest/download/<文件名>）
+    candidates.push(`https://github.com/NapNeko/NapCatQQ/releases/latest/download/${assetName}`);
+
+    const zipFile = join(root, 'napcat-pkg.zip');
+    let lastErr = null;
+    for (const url of candidates) {
+      try {
+        await downloadFile(url, zipFile);
+        lastErr = null;
+        break;
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+    if (lastErr) throw lastErr;
+
+    // 解压（Shell 直接解到根；OneKey 解到 onekey 子目录避免混在一起）
+    installState.phase = 'extracting';
+    installState.message = '解压中…';
+    const dest = useShell ? root : join(root, 'onekey');
+    mkdirSync(dest, { recursive: true });
+    extractZip(zipFile, dest);
+
+    // 找启动器
+    const hit = findLauncher(root, 0);
+    if (!hit) throw new Error('解压完成但没找到启动器（launcher-user.bat / napcat.bat）');
+
+    installState.phase = 'done';
+    installState.progress = 100;
+    installState.message = 'NapCat 就绪';
+    return hit;
+  } catch (e) {
+    installState.phase = 'error';
+    installState.message = `自动安装失败：${e.message}。可手动下载 NapCat 解压后在高级选项里填目录。`;
+    throw e;
+  }
+}
+
+// ---------- 一键登录流程编排（海豹级：点一个按钮，剩下全自动） ----------
+// 流程：确保 NapCat 已装（没装自动下载解压）→ 预写 OneBot 配置 → 启动进程 → WebUI 出二维码
+// 前端只做两件事：触发 POST /napcat/launch + 轮询 GET /napcat/install/status 和 /napcat/qrcode
+
+const flowState = { running: false, launched: false, error: null, dir: null }
+
+async function runLoginFlow({ configuredDir, wsPort, wsToken, qqNumber }) {
+  if (flowState.running) {
+    return { ok: false, reason: '登录流程已在进行中，请等当前步骤完成' };
+  }
+  flowState.running = true;
+  flowState.error = null;
+  flowState.launched = false;
+  try {
+    // 第 1 步：确保 NapCat 就绪（内部更新 installState 进度）
+    const hit = await ensureNapcat(configuredDir);
+    flowState.dir = hit.dir;
+
+    // 第 2 步：预写 OneBot 网络配置（正向 WS 对齐工作台，登录后自动可连）
+    ensureOnebotConfig({ napcatDir: hit.dir, wsPort, wsToken, qqNumber: opts.qqNumber });
+
+    // 第 3 步：启动 NapCat
+    installState.message = '启动 NapCat…';
+    const launch = launchNapcat({ napcatDir: hit.dir, qqNumber });
+    if (!launch.ok && !String(launch.reason || '').includes('已在运行')) {
+      throw new Error(launch.reason);
+    }
+    flowState.launched = true;
+    installState.message = 'NapCat 已启动，等二维码出现…';
+    return { ok: true, dir: hit.dir };
+  } catch (e) {
+    flowState.error = e.message;
+    return { ok: false, reason: e.message };
+  } finally {
+    flowState.running = false;
+  }
+}
+
+module.exports = {
+  ensureOnebotConfig,
+  getWebuiInfo,
+  isWebuiRunning,
+  getLoginQrcode,
+  launchNapcat,
+  stopNapcat,
+  restartNapcat,
+  ensureNapcat,
+  installState,
+  flowState,
+  runLoginFlow,
+  detectInstalled,
+  findConfigDir,
+};

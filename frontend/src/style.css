@@ -1,149 +1,182 @@
+/* ============================================================
+   全局样式：GM 工作台（Excel 计算表风格）
+   设计约定（全站一致，改这里会影响所有页面）：
+   - 两层背景：工作台面 --c-desk（灰）+ 表体纸面 --c-paper（白），不再多套卡片
+   - 白格 = GM 手选/手填，浅蓝格 --c-auto = 自动计算（草图/Excel 约定）
+   - 主色只有藏蓝一个，金色只用于"需裁决/警告"
+   - 圆角全站一种 --radius: 6px；无渐变、无发光、无阴影堆砌
+   ============================================================ */
+
 :root {
-  --color-primary: #263b66;
-  --color-primary-dark: #17243f;
-  --color-secondary: #4f6f9f;
-  --color-accent: #b88a2e;
-  --color-accent-soft: #f4e2b8;
-  --color-text-primary: #243044;
-  --color-text-secondary: #657086;
-  --color-bg: #f6f2ea;
-  --color-card: #ffffff;
-  --color-card-soft: #fbf8f1;
-  --color-border: #e3dccf;
-  --radius-md: 0.75rem;
-  --radius-lg: 1rem;
-  --spacing-sm: 0.5rem;
-  --spacing-md: 1rem;
-  --spacing-lg: 1.5rem;
-  --spacing-xl: 2rem;
-  --shadow-md: 0 10px 24px rgba(38, 59, 102, 0.10);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Microsoft YaHei', sans-serif;
-  line-height: 1.6;
+  /* 颜色 token */
+  --c-ink: #24292f;            /* 正文墨色 */
+  --c-ink-2: #6f7680;          /* 次级文字/说明 */
+  --c-primary: #263b66;        /* 藏蓝主色：顶栏、选中态、主按钮 */
+  --c-primary-soft: #e8edf5;   /* 主色浅底：页签选中、悬停 */
+  --c-auto: #d0ebff;           /* 自动计算格：蓝格 */
+  --c-auto-line: #a8cfe8;      /* 蓝格边线 */
+  --c-warn: #9a6d1c;           /* 需裁决/警告文字（金色系加深保证对比度） */
+  --c-warn-soft: #f7edd8;      /* 警告浅底 */
+  --c-ok: #2e7d4f;             /* 成功/已确认 */
+  --c-ok-soft: #e2f1e8;        /* 成功浅底 */
+  --c-line: #d9d4c8;           /* 普通网格线 */
+  --c-line-strong: #b8b2a4;    /* 表头分隔线/外框线 */
+  --c-desk: #edeae2;           /* 工作台面（页面底色） */
+  --c-paper: #ffffff;          /* 表体纸面 */
+  --c-head: #f3f1ea;           /* 表头底色 */
+
+  /* 形状 token：全站一种圆角 */
+  --radius: 6px;
+
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  line-height: 1.55;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
 body {
   margin: 0;
-  background:
-    radial-gradient(circle at top left, rgba(184, 138, 46, 0.14), transparent 28rem),
-    linear-gradient(180deg, #f9f5ed 0%, var(--color-bg) 45%, #f1ecdf 100%);
-  color: var(--color-text-primary);
+  background: var(--c-desk);   /* 工作台面：纯色，第一层背景 */
+  color: var(--c-ink);
 }
 
-a {
-  color: inherit;
-  text-decoration: none;
+a { color: inherit; text-decoration: none; }
+
+/* 数字列用等宽数字，表格对齐更整齐 */
+.sheet-table { font-variant-numeric: tabular-nums; }
+
+/* ---------- 纸面卡：内容区的唯一容器层级 ---------- */
+.sheet {
+  background: var(--c-paper);
+  border: 1px solid var(--c-line);
+  border-radius: var(--radius);
+  padding: 1rem 1.1rem;
+}
+.sheet + .sheet { margin-top: 1rem; }
+.sheet-title {
+  margin: 0 0 0.6rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--c-primary);
+}
+.sheet-note {
+  font-size: 0.82rem;
+  color: var(--c-ink-2);
+  margin: 0 0 0.7rem;
 }
 
-#app {
-  min-height: 100vh;
-  display: flex;
-}
-
-.app {
+/* ---------- 计算表：Excel 风格网格 ---------- */
+.sheet-table {
   width: 100%;
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+.sheet-table th,
+.sheet-table td {
+  border: 1px solid var(--c-line);
+  padding: 0.38rem 0.55rem;
+  text-align: left;
+  vertical-align: middle;
+}
+.sheet-table th {
+  background: var(--c-head);
+  font-weight: 600;
+  white-space: nowrap;
+  border-bottom-color: var(--c-line-strong);
+}
+.sheet-table td.num { text-align: right; }
+
+/* 自动计算格：浅蓝底（约定：这格的值不用 GM 填） */
+.cell-auto { background: var(--c-auto); }
+
+/* ---------- 按钮 ---------- */
+.btn {
+  appearance: none;
+  border: 1px solid var(--c-line-strong);
+  background: var(--c-paper);
+  color: var(--c-ink);
+  border-radius: var(--radius);
+  padding: 0.32rem 0.85rem;
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.btn:hover:not(:disabled) { background: var(--c-primary-soft); }
+.btn:focus-visible { outline: 2px solid var(--c-primary); outline-offset: 1px; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.btn.primary {
+  background: var(--c-primary);
+  border-color: var(--c-primary);
+  color: #fff;
+}
+.btn.primary:hover:not(:disabled) { background: #1e2f52; }
+
+.btn.danger { color: #a33; }
+.btn.danger:hover:not(:disabled) { background: #f7e4e4; }
+
+.btn.small { padding: 0.18rem 0.55rem; font-size: 0.8rem; }
+
+/* ---------- 表单控件 ---------- */
+.input,
+.select,
+textarea.input {
+  border: 1px solid var(--c-line-strong);
+  border-radius: var(--radius);
+  padding: 0.32rem 0.55rem;
+  font-size: 0.88rem;
+  font-family: inherit;
+  background: var(--c-paper);
+  color: var(--c-ink);
+}
+.input:focus,
+.select:focus,
+textarea.input:focus {
+  outline: none;
+  border-color: var(--c-primary);
 }
 
-.app-main {
-  flex: 1;
-  padding: var(--spacing-xl) var(--spacing-lg);
+/* ---------- 状态点 + 文字（不堆徽章） ---------- */
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--c-line-strong);
+  margin-right: 0.4rem;
+  vertical-align: 1px;
+}
+.dot.ok { background: var(--c-ok); }
+.dot.warn { background: #d9a92e; }
+.dot.off { background: var(--c-line-strong); }
+
+/* ---------- 空态/提示条 ---------- */
+.empty-tip {
+  color: var(--c-ink-2);
+  font-size: 0.88rem;
+  padding: 0.6rem 0.2rem;
+}
+.warn-tip {
+  background: var(--c-warn-soft);
+  color: var(--c-warn);
+  border: 1px solid #e5cf9e;
+  border-radius: var(--radius);
+  padding: 0.5rem 0.8rem;
+  font-size: 0.86rem;
+}
+
+/* ---------- 页面骨架 ---------- */
+.page {
   max-width: 1280px;
   margin: 0 auto;
-  width: 100%;
+  padding: 1.2rem 1.4rem 2.5rem;
 }
+.page-head { margin-bottom: 0.9rem; }
+.page-head h2 { margin: 0 0 0.15rem; font-size: 1.15rem; }
+.page-head p { margin: 0; font-size: 0.84rem; color: var(--c-ink-2); }
 
-.header {
-  background: linear-gradient(135deg, var(--color-primary-dark), var(--color-primary));
-  color: #fff;
-  padding: var(--spacing-md) var(--spacing-lg);
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  box-shadow: var(--shadow-md);
-  border-bottom: 3px solid rgba(184, 138, 46, 0.55);
-}
-
-.header-content {
-  max-width: 1200px;
-  margin: 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--spacing-md);
-}
-
-.header-title {
-  margin: 0;
-  font-size: 1.4rem;
-  font-weight: 700;
-}
-
-.nav {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  gap: var(--spacing-md);
-  flex-wrap: wrap;
-}
-
-.nav-link {
-  color: #fff;
-  padding: calc(var(--spacing-sm) * 0.8) var(--spacing-md);
-  border-radius: var(--radius-md);
-  font-weight: 500;
-  transition: all 0.2s ease;
-  opacity: 0.9;
-}
-
-.nav-link:hover {
-  opacity: 1;
-  background-color: rgba(255, 255, 255, 0.18);
-  transform: translateY(-1px);
-}
-
-.nav-link.active {
-  background-color: rgba(244, 226, 184, 0.22);
-  color: #fff3cf;
-  font-weight: 600;
-}
-
-.page-card {
-  background: var(--color-card);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: var(--spacing-xl);
-  box-shadow: var(--shadow-md);
-  width: 100%;
-}
-
-.page-title {
-  margin: 0 0 var(--spacing-md);
-  font-size: 1.8rem;
-}
-
-.page-subtitle {
-  margin: 0 0 var(--spacing-xl);
-  color: var(--color-text-secondary);
-}
-
-.footer {
-  border-top: 1px solid var(--color-border);
-  padding: var(--spacing-lg);
-  text-align: center;
-  background: rgba(255, 255, 255, 0.72);
-  }
-
-.footer-text {
-  margin: 0;
-  color: var(--color-text-secondary);
-  font-size: 0.95rem;
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
 }
