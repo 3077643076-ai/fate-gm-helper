@@ -1,5 +1,29 @@
 # NOTES.md
 
+## 2026-09-16（夜 12，需求记录：机器人号与个人 QQ 同时在线）
+
+**用户需求**：希望机器人 QQ 和自己的 QQ 能同时开着（现在用机器人就得先退自己的 QQ）。
+问"海豹能不能"——查证结论：**能，但它靠的是自带协议端**。
+
+**查证（海豹手册 https://docs.sealdice.com/deploy/platform-qq.html ）**：
+- 海豹 v1.5.1 起的"内置客户端"= 海豹自己启动 `Lagrange.Milky` 或 `Yogurt`（独立协议实现，自带进程），
+  **不占用本机 QQ 客户端** → 只要不是同一个 QQ 号，就能和本机 QQ 并存
+- 手册的限制原文是"登录期间不要在同一台电脑同时登录**同一 QQ**，否则可能互相挤下线"
+- 同一页也写明：Lagrange.OneBot / Lagrange.Milky / Yogurt / LLBot / NapCat **都占用 PC 端协议**，
+  其中 **NapCat / LLBot 是注入本机 QQ 客户端**的（海豹手册："NapCat 是在后台低占用运行的无头 NTQQ"，
+  装之前要求先装官方 QQ）→ 这才是我们"必须退自己 QQ"的根因，不是 NapCat 的配置问题
+
+**落档**：写进 `CLAUDE.md` 的「阶段 6：机器人协议端'与个人 QQ 并存'」，三条候选方案按代价排序：
+A 协议端放另一台机器（零代码，`wsUrl` 填远端即可，现在就能用）
+B 换自带 QQ 内核的 NapCat OneKey 包（与个人 QQ 并存，需处理安装引导与体积）
+C 换协议端接 Milky / Lagrange.OneBot（要在 backend-node 加协议适配层，且需申请 Signer Token）
+验收标准：个人 QQ 在线时点"登录 QQ 机器人"能出码并连上，且不把个人 QQ 挤下线。
+
+**顺带**：今晚还修掉了"点登录没反应"的真凶 —— `napcat.js:576` 把 `qqNumber` 误写成 `opts.qqNumber`，
+ReferenceError 卡在启动 NapCat 之前（`/api/onebot/napcat/install/status` 里能看到 `flowError`）。
+前端错误分支原来显示的是上一步的旧 message，也改成优先显示真实原因。
+
+
 ## 2026-09-16（夜 11，把「工作台 + QQ 机器人」打成一个发行包）
 
 **需求**：像海豹骰那样"别人下下来就能用"——连 QQ 机器人一起给，不用自己装 NapCat。
