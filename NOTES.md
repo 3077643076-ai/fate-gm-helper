@@ -1,5 +1,16 @@
 # NOTES.md
 
+## 2026-09-16（深夜，U 盘备份方案定稿）
+
+**数据备份：本地+U盘，不上云端（用户拍板，不用 GitHub 私有仓库）**
+- 原因：数据含玩家 QQ/群号/真名/群聊记录，上第三方服务器多一个泄露面；且核心数据很小（~15MB），U 盘拷贝几秒
+- U 盘目标：`E:\圣杯GM数据备份\`（106GB 空闲；E 盘已有 fate-gm/fate-war 是旧代码项目勿动，空想RC规则1.15改 是规则书资料）
+- 备份内容（新 `tools/backup-to-usb.mjs`）：数据库一致性快照 VACUUM INTO（后端开着也能安全备份，不拷半截库）+ 历史库 backups/*.db + 魔力转让台账 + legacy-import + 新三杯子角色卡 + .dsh-meow AI记忆
+- 不备份：规则书 PDF（U 盘"空想RC规则1.15改"已有）、NapCat 程序本体（重装+扫码即可）
+- 一键入口：项目根 `一键备份到U盘.bat`（已 commit 6e1cbd2 推 GitHub）
+- **踩坑：cmd 按启动代码页（GBK）解析 bat，chcp 65001 切晚了会把 bat 里中文字节拆坏**；解法=bat 内只放英文提示，中文全由 node 脚本输出（node UTF-8 在 65001 下正常显示）
+- 换机流程已写进 U 盘 `说明_先读我.md`：代码 git clone、数据按目录对应拷回
+
 ## 2026-09-16（夜 6）
 
 **修"AI 代收失败：roundPhase is not defined"**
