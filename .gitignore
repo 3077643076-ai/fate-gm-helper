@@ -86,8 +86,11 @@ search_longfang.py
 backend-node/scripts/setup-sanguo.mjs
 
 # ===== Electron 打包产物与 staging（2026-09-07）=====
+# 只忽略产物和 staging；frontend/electron/ 里的壳源码要进仓库
+# （2026-09-16：壳源码曾被 ignore 掉，换机器后 main.cjs 丢了，只能照 NOTES 重写一份）
+# electron-napcat-staging 是本机 NapCat 的拷贝（122MB，含第三方二进制），不进仓库
 desktop/
 frontend/electron-backend-staging/
-frontend/electron/
+frontend/electron-napcat-staging/
 frontend/node_modules/electron/
 frontend/node_modules/electron-builder/

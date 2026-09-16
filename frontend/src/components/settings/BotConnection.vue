@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div>
     <div class="page-header">
       <h2>机器人连接</h2>
@@ -54,6 +54,11 @@
         <p v-if="install.phase === 'error' || install.flowError" class="warn-tip">
           {{ install.message || install.flowError }}<br />
           也可以手动下载 NapCat（github.com/NapNeko/NapCatQQ 的 Releases）解压后，在下方高级选项里填解压目录。
+        </p>
+        <p class="sheet-note">
+          机器人由内置的 NapCat（作者 Mlikiowa，github.com/NapNeko/NapCatQQ，非商业许可，原文见包内
+          napcat\LICENSE-NapCat.txt）提供登录；需要本机装有 QQ 客户端。点登录后会自动使用随包/本机已有的
+          NapCat，不会重复下载。
         </p>
         <p v-if="install.webuiRunning && !qrcode && !status.connected" class="sheet-note">
           NapCat 已启动，正在获取二维码…（如果一直出不来，点

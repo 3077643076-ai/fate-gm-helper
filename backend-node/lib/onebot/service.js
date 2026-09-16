@@ -4,13 +4,14 @@
 
 const { join, dirname } = require('node:path');
 const { getDb } = require('../../db');
+const { dataFile } = require('../data-dir');
 const { startOnebotBot } = require('./wsBot');
 const { createCommandHandler } = require('./commands');
 
 // 配置在 app_settings 表里的 key
 const CONFIG_KEY = 'onebot_bot_config';
 // 魔力转让台账（.转魔 指令追加写入的 JSONL 文件）
-const transferLogPath = join(__dirname, '..', '..', 'data', 'magic-transfers.jsonl');
+const transferLogPath = dataFile('magic-transfers.jsonl');
 
 // 当前运行中的机器人实例（含 wsBot 句柄）；null = 未启动
 let bot = null;

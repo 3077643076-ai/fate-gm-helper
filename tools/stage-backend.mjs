@@ -16,12 +16,12 @@ cpSync(src, dest, {
   filter: (srcPath) => {
     const rel = srcPath.slice(src.length + 1)
     if (!rel) return true
-    // 排除：本机备份数据、测试目录、临时卡资料（保密与减体积）
-    return !/^(backups|test|_cards|_unzip_\w+)(\\|\/|$)/.test(rel)
+    // 排除：本机备份数据、运行数据目录、测试目录、临时卡资料（保密与减体积）
+    // data/ 整个排掉：分发版的数据由 exe 旁边的 data/（FATE_DATA_DIR）接管，
+    // 原来只排 gm_helper.db 一个文件，会把 exe-launcher.log 之类的运行日志也打进包
+    return !/^(backups|test|data|_cards|_unzip_\w+)(\\|\/|$)/.test(rel)
       && !/^scripts\\_|^scripts\/_/.test(rel)
       && !/_dump_/.test(rel)
-      && rel !== 'data/gm_helper.db-wal' && rel !== 'data/gm_helper.db-shm'
-      && rel !== 'data/gm_helper.db'   // 分发版不带战役数据（首启自动建空库），防泄密
   },
 })
 console.log('staging 完成 → frontend/electron-backend-staging')

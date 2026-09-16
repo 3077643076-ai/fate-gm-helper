@@ -4,12 +4,13 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import dataDir from '../lib/data-dir.js'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 
 function getKey() {
   if (process.env.DEEPSEEK_API_KEY) return process.env.DEEPSEEK_API_KEY
-  const f = join(root, 'backend-node', 'data', 'deepseek.key')
+  const f = dataDir.dataFile('deepseek.key')
   if (existsSync(f)) return readFileSync(f, 'utf8').trim()
   return null
 }

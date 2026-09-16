@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
 const { getDb } = require('../db');
+const { dataFile } = require('../lib/data-dir');
 
 const router = express.Router();
 
@@ -11,7 +12,7 @@ const router = express.Router();
 function getDeepSeekKey() {
   if (process.env.DEEPSEEK_API_KEY) return process.env.DEEPSEEK_API_KEY;
   try {
-    const f = path.join(__dirname, '..', 'data', 'deepseek.key');
+    const f = dataFile('deepseek.key');
     if (fs.existsSync(f)) return fs.readFileSync(f, 'utf-8').trim();
   } catch (e) {
     /* 忽略读取失败 */

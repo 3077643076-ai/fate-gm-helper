@@ -12,6 +12,7 @@ const express = require('express');
 const path = require('node:path');
 const service = require('./service');
 const napcat = require('./napcat');
+const { dataFile } = require('../data-dir');
 
 const router = express.Router();
 
@@ -167,7 +168,7 @@ function syncAgentNapcatConfig(wsUrl) {
     import('../../engine/agent.mjs'),
     import('../../engine/store.mjs'),
   ]).then(([agent, store]) => {
-    const dbPath = process.env.FATE_GM_DB_PATH || path.join(__dirname, '..', '..', 'data', 'gm_helper.db');
+    const dbPath = process.env.FATE_GM_DB_PATH || dataFile('gm_helper.db');
     const engineDb = store.openEngineDb(dbPath);
     agent.setAgentConfig(engineDb, {
       napcatHttpBase: 'http://127.0.0.1:3000',

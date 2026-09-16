@@ -1,5 +1,176 @@
 # NOTES.md
 
+## 2026-09-16（夜 11，把「工作台 + QQ 机器人」打成一个发行包）
+
+**需求**：像海豹骰那样"别人下下来就能用"——连 QQ 机器人一起给，不用自己装 NapCat。
+
+**形态定案：zip 包 = 工作台 exe + 内置 napcat/ + 使用说明.txt**（不是全塞进 exe）
+- 理由：NapCat 有 122.6MB（光 `native/` 跨平台二进制就 78.8MB），便携 exe 每次启动都要把自己解包到
+  `%TEMP%`，塞进去等于每次双击多等好几秒；放成 exe 旁边的 `napcat/` 文件夹，启动仍是 3 秒，且登录态长期留存
+- 产物：`desktop/圣杯GM工作台-便携版-含QQ机器人.zip`（141MB，867 个文件）
+- 一条命令重打：`npm --prefix frontend run dist:full`（= dist + stage-napcat + make-dist-zip）
+- 新增脚本：`tools/stage-napcat.mjs`（找本机 NapCat → 拷进 staging）、`tools/make-dist-zip.mjs`（组包+压 zip）
+
+**内置 NapCat 是怎么被用上的**：`main.cjs` 启动时找 `exe 旁边的 napcat/`（或 resources/napcat），
+有就把路径用 `FATE_NAPCAT_BUNDLED` 传给后端；`ensureNapcat` 的查找顺序变成
+配置目录 → 数据目录 → **本机已有安装**（~Downloads 等）→ **随包内置**（首次释放到数据目录）→ 联网下载。
+用户自己机器上已有 NapCat 会优先用本机那份（保住登录态），换台新机器才会释放内置的。
+
+**许可（重要，别人拿到包也要能合规）**：NapCat 不是开源协议，是自定义的
+**Limited Redistribution License**（Copyright © 2024 Mlikiowa）：允许随包分发，但必须①附完整许可原文
+②注明来源与版权；**仅限非商业用途**；按 as-is 无担保。所以：
+- 整份拷贝**不改代码**；随包附 `napcat/LICENSE-NapCat.txt`（原文）+ `napcat/来源与许可.md`（来源/版权/非商业声明）
+- 机器人连接页也写明了出处与许可
+- **排除了用户私有运行数据**：`config/`（含 napcat_<QQ>.json 账号配置、webui.json 里的 WebUI token、
+  onebot11 token）、`cache/`、`logs/` 都没进包 —— NapCat 首启会自己生成默认 `config/webui.json`
+  （查过源码 `WebUiConfigWrapper.ensureConfigFileExists`，缺文件会用 schema 默认值写一份）
+
+**踩到一个很阴的 Node 坑（已修，值一提）**：`fs.cpSync` 在 Windows 上遇到**非 ASCII 目标路径**会把它
+按 GBK 解码，目录直接建到乱码名字里去，连路径分隔符都能被当双字节字符吞掉。实测：
+`fs.cpSync(src, 'X:\\tmp\\圣杯GM工作台\\napcat')` → 实际建出同级目录 `鍦ｆ澂GM宸ヤ綔鍙癨napcat`（`\` 没了）。
+后果：第一次打出来的 zip 里**只有 exe 和说明**，napcat 整个丢了；更坑的是别人把包解压到中文目录，
+内置 NapCat 也会释放不出来。修法：新增 `backend-node/lib/copy-dir.js`（`copyDirSync` = mkdirSync +
+copyFileSync 逐层递归），工具和后端都用它，`cpSync` 在这个项目里不要再用。同类替代方案（PowerShell
+Copy-Item / robocopy）也验证过可行，只是多引入外部依赖，没必要。
+
+**打包工具坑**：Windows 自带 `tar.exe`（bsdtar）不能用来打含中文名的 zip ——
+`tar -a -cf x.zip 圣杯GM工作台` 会报 `Can't translate pathname ... to CP437` 并把文件整批漏掉。
+改用 7-Zip（`-mcu=on` 写 UTF-8 名字，本机装在 `C:\Program Files\7-Zip\7z.exe`），
+没装则退回 PowerShell `Compress-Archive`（.NET 会带 UTF-8 标志，122MB 约 40 秒）。
+
+**实测（全过）**：
+1. `stage-napcat` 出 865 个文件 / 122.6MB，config、cache、logs 都不在
+2. zip 解压到**中文目录** `X:\dev\dev\测试中文目录\`：结构正确（exe + napcat/ + 使用说明.txt，865 个文件，许可在）
+3. 从中文目录双击 exe：数据目录落在 exe 旁边、日志 `随包内置的 NapCat：X:\...\圣杯GM工作台\napcat`、
+   托盘起了、页面正常；退出后进程清零、8100 释放
+4. 模拟"新机器"（USERPROFILE 指向空目录）+ **中文数据目录**：`ensureNapcat` 释放 865 个文件到
+   `数据目录\napcat`、带许可、installState = "已使用随包内置的 NapCat"
+5. 包内 `使用说明.txt` 写清了用法、托盘语义、数据位置、"需要本机装有 QQ 客户端"这个前提
+
+
+## 2026-09-16（夜 10，修"点登录 QQ 没反应"）
+
+**现象**：双击 exe 后在设置里点"登录 QQ 机器人"没动静。
+
+**查到两个真原因**（都是实打实的坑）：
+
+1. **自动下载源是"假通"**：`api.github.com` 通（634ms 拿到 tag v4.18.28），
+   `releases/latest/download/NapCat.Shell.zip` 也回 200 + content-length=29498670，
+   但**重定向到 `release-assets.githubusercontent.com` 之后 body 完全不动**——
+   18 秒连 5MB 都没收到。原代码只有 600 秒总超时，所以点下去就是"进度条停 0% 假死"。
+2. **本机早就装过 NapCat 却没被发现**：`C:\Users\30776\Downloads\NapCat.Shell`
+   （8/29 装的，config 里就是机器人 QQ 715218931，webui.json 端口 6099），
+   `start-all.ps1` 里是硬编码路径，而新的 onebot 模块只认"配置目录 / 数据目录"，于是每次都去下载。
+
+**修法**（`backend-node/lib/onebot/napcat.js`）：
+- 新增 `detectLocalNapcat()`：常见位置（`~/Downloads/NapCat.Shell`、`~/Downloads/NapCat`、桌面、
+  数据目录、项目 tools/napcat、C:\NapCat.Shell）+ 扫 `~/Downloads|Desktop|Documents` 下所有名字带
+  napcat 的文件夹，找到有启动器（NapCatWinBootMain.exe / napcat.bat / launcher.bat）的那份就用
+- `ensureNapcat` 在下载前先走这一步：命中就直接用，installState 显示"发现本机已有的 NapCat：<目录>"
+- 下载改成**直连 + 三个镜像**（ghproxy.net / gh-proxy.com / ghfast.top）逐个试，
+  并加 **30 秒无数据即中断**的卡住检测；每个源失败都把原因写进 installState（前端能看到进度文本）
+- 实测：项目后端 + **打包进 exe 的那份**分别调 `ensureNapcat('')`，都返回
+  `{dir: C:\Users\30776\Downloads\NapCat.Shell, launcher: NapCatWinBootMain.exe}` + phase=done（不再下载）；
+  `getWebuiInfo` 读到 port=6099 ✓。启动器优先级本来就和 NOTES 午后4 的实测一致（launcher-user.bat 优先）
+
+**顺带修的**：
+- `main.cjs`：后端"起来前就挂了"时不再让用户干等 60 秒（`backendExited` 标志 → 立刻结束等待）；
+  启动失败弹窗直接列出最近 8 行后端输出 + 日志路径；起后端前自检 `node_modules/{express,body-parser,better-sqlite3}`
+  是否存在，缺了就明确告警（20:32 那次 exe 启动就是报 `Cannot find module 'body-parser'`，
+  属于解包不完整，现在这份已核对 982 个文件齐全、启动日志干净）
+- `tools/stage-backend.mjs`：staging 排除整个 `data/`（原来只排 gm_helper.db，
+  会把 `exe-launcher.log` 之类运行日志打进 exe）
+
+
+## 2026-09-16（夜 9，exe 补系统托盘：右下角小图标）
+
+**用户反馈**：exe 起来后右下角没有小图标 —— 那个图标原本只有 `启动GM工作台.bat` 的
+`gm-tray.ps1`（PowerShell NotifyIcon）才有，Electron 那版从来没做托盘。
+
+- 补 Electron `Tray`（`main.cjs`）：图标用 `frontend/electron/tray.png`（32×32，由 `make-icon.ps1`
+  生成，画法和 gm-tray.ps1 完全一致：藏蓝圆底 + 白 G；打进 asar，加载失败退回 build/icon.png）
+- 托盘菜单：**打开工作台 / 重启后端 / 退出（关闭后端）**；单击或双击图标都开窗口；后端就绪弹气泡提示
+- **行为变化（重要）**：**关窗口 = 收进托盘，后端继续跑**（不再像 09-07 那版"关窗即收后端"）；
+  真正退出走托盘右键 → 退出。理由：有托盘后关窗就退等于托盘图标瞬间消失，等于没托盘
+- 顺带补自愈（对齐 gm-tray.ps1）：后端**意外**退出 → 3 秒后自动重启（最多 5 次）+ 重启后自动重载页面；
+  只在"后端是本程序起的"（`ownBackend`）时才收/重启 —— 8100 已被托盘那套占用时只连不管，绝不误杀
+- 加了个自测钩子：环境变量 `FATE_GM_AUTO_QUIT_MS=N` → N 毫秒后走一遍正常退出流程（验证"退出收后端"）
+- 实测（开发模式 + 打包 exe 各一遍）：
+  ① 日志出现"系统托盘已创建"（说明图标读到了，没走退回分支）；
+  ② 点关闭按钮 → 窗口从任务栏消失、进程还在、8100 还在听、日志写"窗口已收进托盘"；
+  ③ 走退出 → 日志"收后端（pid=…）"、electron/SanguoEngine 进程清零、8100 释放
+- 重打包：`desktop/圣杯GM工作台-便携版-1.0.0.exe`（100.7MB）
+
+
+## 2026-09-16（夜 8，便携 exe 重做：SanguoEngine → 圣杯GM工作台-便携版）
+
+**背景**：用户想"和海豹骰差不多"的一键启动，问起 09-07/08 那个 exe。查下来 `desktop/`（产物）和
+`frontend/electron/`（Electron 壳）都在 .gitignore 里、从没进过仓库，换机器后 main.cjs 丢了，
+`npm run dist` 直接跑不起来 —— 照 NOTES 09-07 晚 22/23 的记述把壳重写了一份。
+
+- **壳源码补回仓库**：`frontend/electron/main.cjs` + `frontend/electron/data-dir.cjs`，
+  `.gitignore` 里去掉 `frontend/electron/`（只留产物 desktop/ 和 staging 目录忽略），这次别再弄丢
+- **main.cjs 结构**（对齐 09-07 那版的行为）：Electron 自带的 node（`ELECTRON_RUN_AS_NODE=1`）
+  起 `backend/index.js` → 端口就绪前先显示"正在启动后端"过渡页 → 就绪后加载工作台 →
+  关窗/退出 `taskkill /PID /T /F` 收掉后端（只收自己拉起来的；8100 已有服务时直接连现成的，不抢不杀）
+  - 打包时 `nm_payload` 改名还原（electron-builder 强排除 node_modules）
+  - `FATE_FRONTEND_DIST` 指内置前端；日志写数据目录的 `exe-launcher.log`
+  - 单实例锁，避免两个 exe 抢 8100
+- **数据目录是这次的关键坑**：portable 目标会把程序解包到 `%TEMP%` 再跑，
+  原来 NapCat 目录、魔力台账、deepseek.key 都写死在 `backend-node/data`（＝临时目录），
+  等于每次启动重下 28MB NapCat、登录态和台账全丢。新增 `backend-node/lib/data-dir.js`
+  （`FATE_DATA_DIR` > `backend-node/data`），db.js / service.js / napcat.js / onebot routes.js /
+  kb.js / engine/llm.mjs 六处改走它。
+  数据目录挑选规则（`frontend/electron/data-dir.cjs`，纯函数、node 可测）：
+  ① `FATE_DATA_DIR` ② 开发运行用 backend-node/data ③ exe 旁边已有 data/ 用它的
+  ④ **exe 上级有 backend-node/data 就用它**（exe 就在项目 desktop/ 里时和托盘后端共用同一个库，
+  避免两份数据各存一半）⑤ 都没有 → exe 旁边新建空库（拷到别处双击即用，且不带战役数据）
+- **图标**：新增 `tools/make-icon.ps1` 画 256×256（藏蓝圆底 + 白 G，和托盘同一套视觉）→
+  `frontend/build/icon.png`（electron-builder 转 ico）+ `frontend/public/icon.png`（favicon）；
+  `frontend/index.html` 标题从 Vite 默认的 `frontend` 改成「空想圣杯 GM 工作台」，favicon 换掉 vite.svg
+  - 踩坑：ps1 必须 UTF-8 **带 BOM**（编辑工具写出来是无 BOM 的，PowerShell 5.1 按 GBK 解析中文直接
+    语法报错）——补回 BOM 后正常；这个坑 gm-tray.ps1 早就踩过一次
+- **打包**：`npm --prefix frontend run build` 再 `npm run dist`（= stage-backend + electron-builder），
+  产物 **`desktop/圣杯GM工作台-便携版-1.0.0.exe`（100.7MB）**，前端版本号从 0.0.0 提到 1.0.0
+  - 国内网络要先设镜像，否则 electron/nsis 二进制大概率卡死：
+    `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/`、
+    `ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/`
+- **实测（都通过）**：
+  1) 开发模式 `npx electron .` + `FATE_DATA_DIR` 指向测试副本：后端起来、页面 200、战役接口返回真数据、
+     **模拟点关闭窗口 → 后端进程被杀、8100 释放**
+  2) 打包 exe 放在 `.../desktop/` 且上级有 `backend-node/data`：数据目录自动选上级那份（真库副本），
+     窗口标题正确、战役接口返回三国杯；
+  3) exe 单独放空目录：旁边自动建 `data/` 空库，服务照常起、战役列表为空（分发/换机形态 OK）
+- 副作用核实：本地主库哈希与 U 盘快照不再逐字节相同，逐表比对后确认**38 张表行数与内容摘要全一致**，
+  差别只是 `journal_mode`（wal vs delete）——被 require/测试打开过库留下的头部标记，数据没动
+
+**顺手修掉一个今天引入的严重 bug：落地页整页空白**
+- exe 起起来后用浏览器抓包发现控制台一直报 `TypeError: Cannot read properties of undefined (reading 'length')`，
+  但页面只剩顶栏/页签，`/campaign/settle-pre`（默认落地页）内容全空
+- 根因：a8ac668 那次重画时，把"引擎登记的行动"表格从 ActionSettlement 抄进 PreSettlement，
+  模板里用了 `engineActions.length` / `v-for="a in engineActions"`，但**变量没跟着定义**（`ref([])` 落在
+  ActionSettlement 里），Vue 渲染时读 undefined.length 直接抛错 → 整个组件不渲染
+- 修复：PreSettlement 补 `engineActions` ref + 复用引擎接口 `getEngineStatus(campaignId, { round, phase })`
+  拉当前选中回合的登记行动，并 `watch(collectRound, loadEngineActions)` 换回合时刷新
+- 验证：选第2回合显示 14 条登记行动（弓御 奏乐 / 剑御 干涉许都 / 术从 礼装制作月灵髓液 / 狂御 征兵+干涉白帝城 …），
+  与夜 2 解析器大修那批实测结果对得上；页面无 console 报错、无 404 资源
+
+
+## 2026-09-16（夜 7，换机同步：U 盘 → 本机）
+
+**今天上班做的东西同步回本机（U 盘 17:30 那次备份是三国杯正式库）**
+- 代码侧：已 `git pull` 到 `2b1cbce`（今天的 5 个提交：结算链排序 / Excalidraw 重画+QQ机器人迁入 backend-node / 吸收远端 / U 盘备份工具 / NOTES），无冲突
+- 数据侧：本机主库原本是开发测试数据（999002 新三测试、999003 测试杯、999102 三国杯测试副本，42 张卡、kb_chunk 760），
+  U 盘快照是**三国杯正式库**（999002 三国杯，turn1-4 closed / turn5 OPEN，engine_actions 15:52、群聊 2805 条、agent_log 16:33、64 条待裁决）
+- 处置：正式库换成本机主库 `backend-node/data/gm_helper.db`（integrity_check ok、foreign_key_check 0 问题、13 个群绑定）；
+  旧开发库留底 `backend-node/backups/gm_helper.local-dev-db.before-usb-sync-20260916.db`，要切回用 `FATE_GM_DB_PATH` 指过去
+- **换库前必须删掉旧库遗留的 `gm_helper.db-wal` / `gm_helper.db-shm`**，否则旧库的锁和 WAL 会错配到新库上
+- 同步回来的其余资料：`玩家角色卡/`→`新三杯子/`（13 个）、`AI会话记忆/`→`.dsh-meow/`（6 个）、
+  `历史导入存档/`→`backend-node/data/legacy-import/`（17 个）、`魔力转让台账.jsonl`→`backend-node/data/magic-transfers.jsonl`
+- 注意：正式库里 kb_chunk 是空的（本机开发库那 760 条规则书知识库没跟过去），要在本机用 AI 规则查询得先重建 KB
+- 顺手修：U 盘盘符不再硬编码 E（新增 `tools/usb-drive.mjs` + `backup-to-usb.mjs` 接上，自动找带"圣杯GM数据备份"的盘，
+  找不到就报错退出而不是静默在本机硬盘上新建目录）；`一键备份到U盘.bat` 改为透传参数（`一键备份到U盘.bat H` 可手动指定）
+
 ## 2026-09-16（深夜，U 盘备份方案定稿）
 
 **数据备份：本地+U盘，不上云端（用户拍板，不用 GitHub 私有仓库）**

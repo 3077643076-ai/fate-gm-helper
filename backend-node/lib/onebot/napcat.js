@@ -11,6 +11,8 @@ const { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSyn
 const { join } = require('node:path');
 const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
+const { dataFile } = require('../data-dir');
+const { copyDirSync } = require('../copy-dir');
 
 // 当前拉起的 NapCat 进程句柄（工作台退出时由 service 统一处理，这里只管启动）
 let napcatProc = null;
@@ -288,8 +290,9 @@ async function restartNapcat({ napcatDir, qqNumber }) {
 const installState = { phase: 'idle', progress: 0, message: '', startedAt: null };
 
 // NapCat 自动安装到的固定位置（工作台数据目录下，不污染用户目录）
+// 注意：走 dataFile 而不是 __dirname/data —— 便携 exe 下程序在临时目录，装那儿等于每次都重下
 function defaultNapcatRoot() {
-  return join(__dirname, '..', '..', 'data', 'napcat');
+  return dataFile('napcat');
 }
 
 // 找目录里的启动器（NapCatWinBootMain.exe / napcat.bat / launcher.bat），最多往下探两层
@@ -316,6 +319,59 @@ function detectInstalled(configuredDir) {
   return findLauncher(defaultNapcatRoot(), 0);
 }
 
+// ---------- 本机已装 NapCat 的自动发现 ----------
+// 为什么要有这一步：国内直连 GitHub Release 资产经常"响应 200 但 body 不动"，
+// 自动下载会一直卡着（看着就是"点了没反应"）。而用户机器上往往早就装过 NapCat
+// （比如 %USERPROFILE%\Downloads\NapCat.Shell），直接复用比下载靠谱得多。
+function homeDir() {
+  return process.env.USERPROFILE || process.env.HOME || '';
+}
+
+// 常见安装位置（固定几个）
+function commonNapcatDirs() {
+  const home = homeDir();
+  return [
+    defaultNapcatRoot(),
+    home && join(home, 'Downloads', 'NapCat.Shell'),
+    home && join(home, 'Downloads', 'NapCat'),
+    home && join(home, 'Desktop', 'NapCat.Shell'),
+    home && join(home, 'NapCat.Shell'),
+    join(__dirname, '..', '..', '..', 'tools', 'napcat'), // 老的手动安装位置
+    'C:\\NapCat.Shell',
+  ].filter(Boolean);
+}
+
+// 扫用户目录下所有名字带 napcat 的文件夹（解压位置五花八门，只能扫）
+function scanNapcatDirs() {
+  const home = homeDir();
+  if (!home) return [];
+  const found = [];
+  for (const root of [join(home, 'Downloads'), join(home, 'Desktop'), join(home, 'Documents')]) {
+    let entries = [];
+    try {
+      entries = readdirSync(root);
+    } catch {
+      continue;
+    }
+    for (const name of entries) {
+      if (/napcat/i.test(name)) found.push(join(root, name));
+    }
+  }
+  return found;
+}
+
+// 在本机找一份能用的 NapCat（返回 {dir, launcher} 或 null）
+function detectLocalNapcat() {
+  const seen = new Set();
+  for (const dir of [...commonNapcatDirs(), ...scanNapcatDirs()]) {
+    if (!dir || seen.has(dir)) continue;
+    seen.add(dir);
+    const hit = findLauncher(dir, 0);
+    if (hit) return hit;
+  }
+  return null;
+}
+
 // 拿 NapCat 最新版本号（GitHub API）；失败返回 null（调用方用兜底 tag）
 async function fetchLatestTag() {
   try {
@@ -331,24 +387,49 @@ async function fetchLatestTag() {
 }
 
 // 下载文件（跟随跳转），按 content-length 汇报进度百分比
-async function downloadFile(url, destFile) {
-  const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(600000) });
-  if (!res.ok) throw new Error(`下载失败 HTTP ${res.status}`);
-  const total = Number(res.headers.get('content-length')) || 0;
-  const buf = Buffer.allocUnsafe(total || 32 * 1024 * 1024);
-  let received = 0;
-  const chunks = [];
-  for await (const chunk of res.body) {
-    chunks.push(chunk);
-    received += chunk.length;
-    if (total) {
-      installState.progress = Math.min(99, Math.round((received / total) * 100));
-      installState.message = `下载 NapCat ${installState.progress}%`;
-    } else {
-      installState.message = `下载 NapCat ${(received / 1024 / 1024).toFixed(1)}MB`;
+// 卡住检测：30 秒收不到任何数据就中断这次尝试（GitHub 资产在国内经常"连上但不下数据"，
+// 不设这个的话前端进度条会一直停在 0% 让人以为按钮没反应）
+async function downloadFile(url, destFile, stallMs = 30000) {
+  const controller = new AbortController();
+  let watchdog = null;
+  const arm = () => {
+    if (watchdog) clearTimeout(watchdog);
+    watchdog = setTimeout(() => controller.abort(new Error(`下载卡住（${stallMs / 1000} 秒没有数据）`)), stallMs);
+  };
+  try {
+    arm();
+    const res = await fetch(url, { redirect: 'follow', signal: controller.signal });
+    if (!res.ok) throw new Error(`下载失败 HTTP ${res.status}`);
+    const total = Number(res.headers.get('content-length')) || 0;
+    let received = 0;
+    const chunks = [];
+    for await (const chunk of res.body) {
+      arm();
+      chunks.push(chunk);
+      received += chunk.length;
+      if (total) {
+        installState.progress = Math.min(99, Math.round((received / total) * 100));
+        installState.message = `下载 NapCat ${installState.progress}%`;
+      } else {
+        installState.message = `下载 NapCat ${(received / 1024 / 1024).toFixed(1)}MB`;
+      }
     }
+    writeFileSync(destFile, Buffer.concat(chunks));
+  } finally {
+    if (watchdog) clearTimeout(watchdog);
   }
-  writeFileSync(destFile, Buffer.concat(chunks));
+}
+
+// GitHub 直连 + 国内镜像（直连不通时按顺序试；镜像只是转发 GitHub 的 URL）
+const MIRROR_PREFIXES = [
+  '',
+  'https://ghproxy.net/',
+  'https://gh-proxy.com/',
+  'https://ghfast.top/',
+];
+
+function withMirrors(url) {
+  return MIRROR_PREFIXES.map((p) => (p ? p + url : url));
 }
 
 // 用 Windows 自带 tar 解压 zip（Win10 1803+ 自带）；失败兜底 PowerShell Expand-Archive
@@ -372,9 +453,45 @@ function extractZip(zipFile, destDir) {
  * @returns {{dir: string, launcher: string}} 可用的 NapCat 目录和启动器
  */
 async function ensureNapcat(configuredDir) {
-  // 1) 已经装过（用户目录或默认位置）→ 直接用
+  // 1) 已经装过（配置目录或工作台数据目录）→ 直接用
   const installed = detectInstalled(configuredDir);
   if (installed) return installed;
+
+  // 1.5) 本机别处已经装过（Downloads/NapCat.Shell 之类）→ 也直接用，别去跟 GitHub 死磕
+  const localOne = detectLocalNapcat();
+  if (localOne) {
+    installState.phase = 'done';
+    installState.progress = 100;
+    installState.message = `发现本机已有的 NapCat：${localOne.dir}`;
+    return localOne;
+  }
+
+  // 1.6) 发行包自带的 NapCat（exe 旁边的 napcat/）：释放到数据目录后使用
+  // 这样"下下来解压就能扫码登录"，不用联网下载 28MB，也不用自己装
+  const bundled = process.env.FATE_NAPCAT_BUNDLED || '';
+  if (bundled && existsSync(bundled)) {
+    const dest = defaultNapcatRoot();
+    if (!findLauncher(dest, 0)) {
+      installState.phase = 'extracting';
+      installState.progress = 30;
+      installState.message = '正在释放随包内置的 NapCat（第一次会慢几秒）…';
+      try {
+        mkdirSync(dest, { recursive: true });
+        // 用 copyDirSync 而不是 fs.cpSync：cpSync 碰到中文目标路径会建到乱码目录里去（见 copy-dir.js 注释）
+        const n = copyDirSync(bundled, dest);
+        installState.message = `已释放内置 NapCat（${n} 个文件）`;
+      } catch (e) {
+        installState.message = `释放内置 NapCat 失败：${e.message}`;
+      }
+    }
+    const released = findLauncher(dest, 0);
+    if (released) {
+      installState.phase = 'done';
+      installState.progress = 100;
+      installState.message = '已使用随包内置的 NapCat';
+      return released;
+    }
+  }
 
   // 2) 自动下载安装到默认位置
   installState.phase = 'downloading';
@@ -391,23 +508,29 @@ async function ensureNapcat(configuredDir) {
     const assetName = useShell ? 'NapCat.Shell.zip' : 'NapCat.Shell.Windows.OneKey.zip';
 
     const tag = (await fetchLatestTag()) || '';
-    const candidates = [];
-    if (tag) candidates.push(`https://github.com/NapNeko/NapCatQQ/releases/download/${tag}/${assetName}`);
+    const bases = [];
+    if (tag) bases.push(`https://github.com/NapNeko/NapCatQQ/releases/download/${tag}/${assetName}`);
     // 兜底：不带 tag 的 latest 重定向（GitHub 支持 releases/latest/download/<文件名>）
-    candidates.push(`https://github.com/NapNeko/NapCatQQ/releases/latest/download/${assetName}`);
+    bases.push(`https://github.com/NapNeko/NapCatQQ/releases/latest/download/${assetName}`);
+    // 每个源都试一遍镜像（直连 → ghproxy → gh-proxy → ghfast）
+    const candidates = bases.flatMap(withMirrors);
 
     const zipFile = join(root, 'napcat-pkg.zip');
     let lastErr = null;
-    for (const url of candidates) {
+    for (const [i, url] of candidates.entries()) {
       try {
+        installState.message = `正在下载 NapCat（源 ${i + 1}/${candidates.length}）…`;
         await downloadFile(url, zipFile);
         lastErr = null;
         break;
       } catch (e) {
         lastErr = e;
+        installState.message = `源 ${i + 1}/${candidates.length} 失败：${e.message}，换下一个…`;
       }
     }
-    if (lastErr) throw lastErr;
+    if (lastErr) {
+      throw new Error(`${lastErr.message}（所有下载源都失败；可手动下载 NapCat 解压后在高级选项里填目录）`);
+    }
 
     // 解压（Shell 直接解到根；OneKey 解到 onekey 子目录避免混在一起）
     installState.phase = 'extracting';
@@ -482,5 +605,6 @@ module.exports = {
   flowState,
   runLoginFlow,
   detectInstalled,
+  detectLocalNapcat,
   findConfigDir,
 };

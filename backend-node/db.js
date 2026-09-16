@@ -51,7 +51,8 @@ try {
   Database = DatabaseCompat;
 }
 
-const DB_PATH = process.env.FATE_GM_DB_PATH || path.join(__dirname, 'data', 'gm_helper.db');
+const { dataFile } = require('./lib/data-dir');
+const DB_PATH = process.env.FATE_GM_DB_PATH || dataFile('gm_helper.db');
 
 let db;
 

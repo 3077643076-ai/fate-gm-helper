@@ -1,5 +1,5 @@
-// 用途：把 fate-gm-helper 的项目运行数据备份到 U 盘（默认 E:\圣杯GM数据备份\）
-// 用法：node tools/backup-to-usb.mjs [U盘盘符，默认 E]
+// 用途：把 fate-gm-helper 的项目运行数据备份到 U 盘（<盘符>:\圣杯GM数据备份\）
+// 用法：node tools/backup-to-usb.mjs [U盘盘符，不传则自动识别带"圣杯GM数据备份"的盘]
 // 说明：
 //   1. 数据库用 VACUUM INTO 生成一致性快照（后端开着也能安全备份，不会拷到写到一半的库）
 //   2. 其余目录（历史库备份/魔力台账/历史导入存档/玩家角色卡/AI会话记忆）直接拷贝
@@ -9,6 +9,7 @@ import { createRequire } from 'module'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { findUsbDrive, BACKUP_DIR_NAME } from './usb-drive.mjs'
 
 // 加载 better-sqlite3（装在 backend-node 的 node_modules 里）
 const require = createRequire(import.meta.url)
@@ -18,9 +19,15 @@ const Database = require('../backend-node/node_modules/better-sqlite3')
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(__dirname, '..')
 
-// U 盘目标目录
-const DRIVE = process.argv[2] || 'E'
-const BACKUP_ROOT = `${DRIVE}:\\圣杯GM数据备份`
+// U 盘目标目录：盘符自动识别，避免硬编码 E: 写错盘（U 盘换台机器盘符就变）
+const found = findUsbDrive(process.argv[2])
+if (!found.letter) {
+  console.log(`找不到 U 盘：${found.note}`)
+  console.log('用法：node tools/backup-to-usb.mjs <盘符>    例：node tools/backup-to-usb.mjs H')
+  process.exit(1)
+}
+const DRIVE = found.letter
+const BACKUP_ROOT = `${DRIVE}:\\${BACKUP_DIR_NAME}`
 
 // 源数据位置
 const SRC_DB = path.join(ROOT, 'backend-node', 'data', 'gm_helper.db')
@@ -56,7 +63,11 @@ function fmtSize(byte) {
 
 // ===== 开始备份 =====
 console.log('===== fate-gm-helper 数据备份到 U 盘 =====')
-if (!fs.existsSync(BACKUP_ROOT)) fs.mkdirSync(BACKUP_ROOT, { recursive: true })
+console.log(`目标盘：${DRIVE}:（${found.note}）`)
+if (!fs.existsSync(BACKUP_ROOT)) {
+  console.log(`注意：${BACKUP_ROOT} 还不存在，这次会新建——确认 ${DRIVE}: 是 U 盘而不是本机硬盘`)
+  fs.mkdirSync(BACKUP_ROOT, { recursive: true })
+}
 
 // 1. 数据库一致性快照（VACUUM INTO 生成独立文件，不影响正在运行的主库）
 let snapSize = 0

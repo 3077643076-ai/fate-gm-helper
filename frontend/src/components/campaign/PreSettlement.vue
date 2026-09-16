@@ -120,7 +120,7 @@ import { ref, computed, watch } from 'vue'
 import { useCurrentCampaign } from '../../composables/useCurrentCampaign'
 import { listCurrentSubmissions } from '../../services/actionSubmission'
 import { getCurrentRound, listAllRounds, roundLabel, roundPhase } from '../../services/round'
-import { getAgentConfig, checkNotices, remindGroups, runAgentCollect } from '../../services/engine'
+import { getAgentConfig, checkNotices, remindGroups, runAgentCollect, getEngineStatus } from '../../services/engine'
 import { putOnebotConfig, getOnebotStatus } from '../../services/onebot'
 
 const { current } = useCurrentCampaign()
@@ -130,6 +130,7 @@ const submissions = ref([])
 const currentRoundLabel = ref('—')
 const noticeResult = ref(null)
 const missingGroups = ref([])
+const engineActions = ref([])      // 引擎登记的行动（AI 代收/标准话术解析结果），按选中回合拉
 const checking = ref(false)
 const reminding = ref(false)
 const collecting = ref(false)
@@ -167,7 +168,7 @@ function alignedDot(c) {
 }
 
 async function refresh() {
-  if (!campaignId.value) { submissions.value = []; allRounds.value = []; return }
+  if (!campaignId.value) { submissions.value = []; allRounds.value = []; engineActions.value = []; return }
   try {
     submissions.value = await listCurrentSubmissions(campaignId.value)
   } catch {
@@ -196,6 +197,22 @@ async function refresh() {
     const s = await getOnebotStatus()
     muted.value = !!s.muted
   } catch { /* 忽略 */ }
+  // 引擎登记的行动：按当前选中的回合/时段拉（这张表在 09-16 重画时漏了数据源，
+  // 模板上引用了未定义的 engineActions，导致整个"结算前"页渲染报错、内容空白）
+  await loadEngineActions()
+}
+
+async function loadEngineActions() {
+  if (!campaignId.value) { engineActions.value = []; return }
+  try {
+    const s = await getEngineStatus(campaignId.value, {
+      round: collectRound.value,
+      phase: roundPhase(collectRound.value),
+    })
+    engineActions.value = s?.actions || []
+  } catch {
+    engineActions.value = []
+  }
 }
 
 // NapCat HTTP 地址：优先读 AI 助手配置；没配也能工作（后端指令优先走 WS 通道，
@@ -268,6 +285,8 @@ async function doAgentCollect() {
 }
 
 watch(campaignId, refresh, { immediate: true })
+// 换收回合时，引擎登记的行动表跟着换（下拉里的回合不同，登记结果也不同）
+watch(collectRound, loadEngineActions)
 </script>
 
 <style scoped>
