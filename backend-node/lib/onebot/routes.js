@@ -147,7 +147,10 @@ router.get('/napcat/qrcode', async (req, res) => {
   const dir = resolveNapcatDir(config);
   if (!dir) return res.status(400).json({ error: 'NapCat 还没就绪' });
   const result = await napcat.getLoginQrcode({ napcatDir: dir });
-  if (result.ok) return res.json({ qrcode: result.qrcode });
+  if (result.ok) {
+    // mtime 给前端判断"这张码是不是旧的"（NapCat 每几分钟刷新一次，页面必须能识别过期）
+    return res.json({ qrcode: result.qrcode, mtime: result.mtime || null, source: result.source || null, fetchedAt: Date.now() });
+  }
   const info = napcat.getWebuiInfo(dir);
   const port = (info && info.port) || 6099;
   res.json({

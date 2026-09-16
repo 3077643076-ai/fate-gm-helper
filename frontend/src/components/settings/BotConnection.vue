@@ -72,10 +72,22 @@
         </p>
       </div>
 
-      <!-- 第 3 步：二维码 -->
+      <!-- 第 3 步：二维码（带"这张码是不是旧的"提示） -->
       <div v-if="qrcode" class="qr-box">
-        <img :src="qrcode" alt="登录二维码" class="qr-img" />
-        <p class="sheet-note">用机器人账号的手机 QQ 扫这个码；二维码过期会自动刷新</p>
+        <img :src="qrcode" alt="登录二维码" class="qr-img" :class="{ 'qr-stale': qrStale }" />
+        <p class="sheet-note">
+          用机器人账号的手机 QQ 扫这个码；NapCat 会定时刷新，页面拿到新码会自动换（正常 3 秒内跟上）
+        </p>
+        <p class="sheet-note" :class="{ 'warn-tip': qrStale }">
+          码生成于 <b>{{ qrTimeText }}</b><template v-if="qrAgeMin >= 1">（{{ Math.floor(qrAgeMin) }} 分钟前）</template>
+          <template v-if="qrStale">
+            <br />
+            ⚠️ 这张码<b>可能已经过期</b>{{ qrPollFailed ? '（页面已连不上工作台后端，无法确认最新码）' : '' }}
+            —— 扫码失败就去
+            <a :href="scanPageUrl" target="_blank">NapCat 扫码页</a>
+            扫最新的，或点上面「登录 QQ 机器人」重新取码。
+          </template>
+        </p>
       </div>
 
       <!-- 完成 -->
@@ -200,6 +212,9 @@ const launching = ref(false)
 const flowStarted = ref(false)
 const install = ref({ phase: 'idle', progress: 0, message: '', flowRunning: false, webuiRunning: false, webuiUrl: null })
 const qrcode = ref(null)
+const qrcodeMtime = ref(0)      // 后端给的「码写入时刻」，用来判断新旧
+const qrcodeGotAt = ref(0)      // 页面收到它的时刻（mtime 缺失时兜底）
+const qrPollFailed = ref(false) // 拉不到新码（后端不可达）→ 无法确认是不是最新
 
 // 进度条文案：优先流程 message，兜底按阶段拼
 const progressText = computed(() => {
@@ -292,9 +307,37 @@ async function refreshFlow() {
 async function pollQrcode() {
   try {
     const r = await getNapcatQrcode()
-    if (r?.qrcode) qrcode.value = r.qrcode
-  } catch { /* 二维码接口是 best-effort，失败继续等 */ }
+    if (r?.qrcode) {
+      qrcode.value = r.qrcode
+      qrcodeMtime.value = r.mtime || 0
+      qrcodeGotAt.value = Date.now()
+      qrPollFailed.value = false
+    }
+  } catch {
+    // 拉不到新码：可能后端挂了/断线。保留已显示的码，但标记"无法确认是否最新"
+    qrPollFailed.value = true
+  }
 }
+
+// 这张码的年龄：优先用后端给的 mtime（NapCat 写文件的时刻），拿不到就用页面收到它的时刻
+const qrAgeMin = computed(() => {
+  if (!qrcode.value) return 0
+  const ref = qrcodeMtime.value || qrcodeGotAt.value
+  return ref ? (Date.now() - ref) / 60000 : 0
+})
+
+// 超过 8 分钟，或已经拉不到新码 → 提示可能过期（NapCat 一般几分钟刷一次）
+const qrStale = computed(() => Boolean(qrcode.value) && (qrPollFailed.value || qrAgeMin.value > 8))
+
+const qrTimeText = computed(() => {
+  const ref = qrcodeMtime.value || qrcodeGotAt.value
+  if (!ref) return '未知'
+  const d = new Date(ref)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+})
+
+// 扫码页地址：优先用后端给的带 token 直达地址，兜底本地默认端口
+const scanPageUrl = computed(() => install.value.webuiUrl || 'http://127.0.0.1:6099/webui')
 
 // 点大按钮：触发后端全自动流程
 async function doLaunch() {
@@ -453,6 +496,11 @@ watch(flowStarted, () => { })
   border: 1px solid var(--c-line);
   border-radius: var(--radius);
   background: #fff;
+}
+/* 可能过期的码：变灰 + 降对比，提醒别当成有效码去扫 */
+.qr-img.qr-stale {
+  filter: grayscale(1);
+  opacity: 0.45;
 }
 .connected-tip {
   margin: 0.8rem 0 0;
