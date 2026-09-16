@@ -1,5 +1,5 @@
 // M3 端到端 v2：修正双计 bug 后重跑（术组 vs 枪组 @许都）
-const API = 'http://localhost:8100/api/engine/battles'
+const API = 'http://127.0.0.1:8100/api/engine/battles'
 const post = async (path, body) => {
   const r = await fetch(API + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
   return { code: r.status, body: await r.json() }

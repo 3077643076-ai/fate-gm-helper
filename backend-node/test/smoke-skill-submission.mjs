@@ -1,7 +1,7 @@
 // 冒烟测试：QQ 技能提交收集链路（解析 → 提交 → 确认 → 重复标记 → 别名沉淀）
 // 后端地址可用环境变量覆盖：FATE_GM_SMOKE_BASE=http://localhost:8101 node test/smoke-skill-submission.mjs
 // 注意：本机 8100 可能被旧代码进程占用，建议 PORT=8101 起新后端再跑本测试
-const BASE = process.env.FATE_GM_SMOKE_BASE || 'http://localhost:8100/api'
+const BASE = process.env.FATE_GM_SMOKE_BASE || 'http://127.0.0.1:8100/api'
 
 async function post(path, body) {
   return fetch(`${BASE}${path}`, {

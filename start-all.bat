@@ -5,7 +5,7 @@ cd /d "%~dp0"
 
 rem 一键启动全部：NapCat + Koishi + 后端 + 前端
 rem 用法:
-rem   start-all.bat         生产模式（构建前端，后端托管 http://localhost:8100）
+rem   start-all.bat         生产模式（构建前端，后端托管 http://127.0.0.1:8100）
 rem   start-all.bat dev     开发模式（Vite 热更新 http://localhost:3100）
 
 set "MODE=prod"

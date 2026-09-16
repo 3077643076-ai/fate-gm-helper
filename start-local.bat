@@ -6,7 +6,7 @@ echo Building frontend...
 call npm --prefix frontend run build
 if errorlevel 1 goto error
 
-echo Starting Fate GM Helper at http://localhost:8100
+echo Starting Fate GM Helper at http://127.0.0.1:8100
 call npm --prefix backend-node start
 goto end
 

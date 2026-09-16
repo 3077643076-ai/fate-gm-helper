@@ -16,6 +16,20 @@ const { dataFile } = require('../data-dir');
 
 const router = express.Router();
 
+// NapCat 目录解析：配置里填的 → 本机自动发现的（~/Downloads/NapCat.Shell 之类）→ 空
+// 为什么要这层兜底：一键登录会自动发现本机已有的 NapCat，但配置里可能还是空的，
+// 结果"取二维码/查状态/重启"这些接口全在找一个不存在的目录 —— 表现就是
+// "登录按钮点了、NapCat 也起来了，但页面一直不出二维码"（2026-09-16 实测踩到）
+function resolveNapcatDir(config) {
+  if (config.napcatDir) {
+    const hit = napcat.detectInstalled(config.napcatDir);
+    if (hit) return hit.dir;
+  }
+  const local = napcat.detectLocalNapcat();
+  if (local) return local.dir;
+  return napcat.detectInstalled('')?.dir || config.napcatDir || '';
+}
+
 // 从配置生成 NapCat WebUI 的带 token 直达地址（打开就是扫码页）
 function buildWebuiUrl(config) {
   const info = napcat.getWebuiInfo(config.napcatDir);
@@ -91,6 +105,12 @@ router.post('/napcat/launch', (req, res) => {
   if (!result.ok && !napcat.flowState.running) {
     return res.status(400).json({ error: result.reason });
   }
+  // 自动发现的目录写回配置：后面取二维码/查状态/重启都用同一个目录，不再靠猜
+  if (result.ok && result.dir && result.dir !== config.napcatDir) {
+    try {
+      service.writeConfig(db, { napcatDir: result.dir });
+    } catch { /* 写配置失败不影响登录 */ }
+  }
   res.json({ ok: true, started: true, hint: '流程已启动，请轮询安装状态和二维码' });
 });
 
@@ -100,8 +120,9 @@ router.post('/napcat/launch', (req, res) => {
 router.get('/napcat/install/status', async (_req, res) => {
   const db = require('../../db').getDb();
   const config = service.readConfig(db);
-  const info = config.napcatDir ? napcat.getWebuiInfo(config.napcatDir) : null;
-  const rootInfo = napcat.detectInstalled(config.napcatDir || '');
+  const dir = resolveNapcatDir(config);
+  const info = dir ? napcat.getWebuiInfo(dir) : null;
+  const rootInfo = { dir: dir || null };
   // WebUI 端口：优先已装目录的 webui.json，兜底默认 6099
   const webuiPort = (info && info.port) || 6099;
   const webuiRunning = napcat.flowState.launched ? await napcat.isWebuiRunning(webuiPort) : false;
@@ -121,7 +142,7 @@ router.get('/napcat/install/status', async (_req, res) => {
 router.get('/napcat/qrcode', async (req, res) => {
   const db = require('../../db').getDb();
   const config = service.readConfig(db);
-  const dir = napcat.detectInstalled(config.napcatDir || '')?.dir || config.napcatDir;
+  const dir = resolveNapcatDir(config);
   if (!dir) return res.status(400).json({ error: 'NapCat 还没就绪' });
   const result = await napcat.getLoginQrcode({ napcatDir: dir });
   if (result.ok) return res.json({ qrcode: result.qrcode });
@@ -137,12 +158,13 @@ router.get('/napcat/qrcode', async (req, res) => {
 router.get('/napcat/status', async (_req, res) => {
   const db = require('../../db').getDb();
   const config = service.readConfig(db);
-  const info = napcat.getWebuiInfo(config.napcatDir || '');
+  const dir = resolveNapcatDir(config);
+  const info = dir ? napcat.getWebuiInfo(dir) : null;
   const running = info ? await napcat.isWebuiRunning(info.port) : false;
   res.json({
-    configured: Boolean(config.napcatDir),
+    configured: Boolean(dir),
     webuiRunning: running,
-    webuiUrl: config.napcatDir ? buildWebuiUrl(config) : null,
+    webuiUrl: dir ? `http://127.0.0.1:${(info && info.port) || 6099}/webui${info?.token ? `?token=${encodeURIComponent(info.token)}` : ''}` : null,
   });
 });
 
@@ -150,7 +172,7 @@ router.get('/napcat/status', async (_req, res) => {
 router.post('/napcat/restart', async (req, res) => {
   const db = require('../../db').getDb();
   const config = service.readConfig(db);
-  const dir = napcat.detectInstalled(config.napcatDir || '')?.dir || config.napcatDir;
+  const dir = resolveNapcatDir(config);
   if (!dir) return res.status(400).json({ error: 'NapCat 还没安装过' });
   // 重启前顺带把配置再升级一次（幂等），并同步引擎侧 HTTP 地址
   const wsPort = Number(String(config.wsUrl || '').match(/:(\d+)/)?.[1]) || 3001;

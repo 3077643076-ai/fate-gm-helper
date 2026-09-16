@@ -2,7 +2,7 @@
 setlocal
 cd /d "%~dp0"
 
-set "APP_URL=http://localhost:8100"
+set "APP_URL=http://127.0.0.1:8100"
 set "BACKEND_DIR=%~dp0backend-node"
 
 echo [Fate GM Helper] Building frontend...

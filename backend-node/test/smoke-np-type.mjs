@@ -1,6 +1,6 @@
 // 冒烟测试：验证 np_type 在真实 API 链路上存取正常（创建→回显→更新→删除）
 // 后端地址可用环境变量覆盖：FATE_GM_SMOKE_BASE=http://localhost:8101 node test/smoke-np-type.mjs
-const BASE = process.env.FATE_GM_SMOKE_BASE || 'http://localhost:8100/api'
+const BASE = process.env.FATE_GM_SMOKE_BASE || 'http://127.0.0.1:8100/api'
 
 async function main() {
   // 创建：带 npType 的宝具模板

@@ -7,7 +7,7 @@
 //      WebUI 接口非公开文档，失败时前端降级为"打开 NapCat 扫码页"按钮）
 // 依据：https://napneko.github.io/config/basic —— webui.json / onebot11.json 的位置与格式
 
-const { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSync } = require('node:fs');
+const { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, createWriteStream } = require('node:fs');
 const { join } = require('node:path');
 const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
@@ -244,17 +244,40 @@ function launchNapcat({ napcatDir, qqNumber }) {
   for (const c of candidates) {
     const full = join(napcatDir, c.file);
     if (!existsSync(full)) continue;
-    // 隐藏窗口拉起；bat 用 cmd 包装执行，控制台输出落日志文件便于排查
-    // 注意：重定向必须拼进整条命令字符串（数组参数模式下 cmd 不认 > 重定向）
+    // 启动器输出用管道写进 launch.log —— **不要用 cmd 的 `>` 重定向**：
+    // Node 在 Windows 上会把参数里的内层引号转义成 \"，而 cmd 不认反斜杠转义，
+    // 结果是命令解析失败、cmd 秒退（退出码 1）且连日志文件都不会生成。
+    // 症状就是"点了登录一直显示等二维码"（2026-09-16 实测踩到，spawn 却返回成功）
     const logFile = join(napcatDir, 'launch.log');
+    let logStream = null;
+    try {
+      logStream = createWriteStream(logFile, { flags: 'a' });
+    } catch { /* 日志失败不影响启动 */ }
+
     const isBat = c.file.endsWith('.bat');
-    const argStr = c.args.join(' ');
-    napcatProc = spawn(
-      'cmd.exe',
-      ['/c', `${isBat ? full : `"${full}"`} ${argStr} > "${logFile}" 2>&1`],
-      { cwd: napcatDir, windowsHide: true, detached: false, stdio: 'ignore' },
-    );
-    napcatProc.on('error', () => { napcatProc = null; });
+    if (isBat) {
+      // .bat 必须经 cmd：整条命令再包一层引号 + windowsVerbatimArguments，避开 Node 的引号转义
+      napcatProc = spawn('cmd.exe', ['/c', `""${full}" ${c.args.join(' ')}"`], {
+        cwd: napcatDir,
+        windowsHide: true,
+        windowsVerbatimArguments: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+    } else {
+      napcatProc = spawn(full, c.args, {
+        cwd: napcatDir,
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+    }
+    if (logStream && napcatProc.stdout && napcatProc.stderr) {
+      napcatProc.stdout.pipe(logStream);
+      napcatProc.stderr.pipe(logStream);
+    }
+    napcatProc.on('error', (e) => {
+      napcatProc = null;
+      flowState.error = `拉起 NapCat 失败：${e.message}`;
+    });
     napcatProc.on('exit', () => { napcatProc = null; });
     return { ok: true, launcher: c.file };
   }
@@ -560,6 +583,44 @@ async function ensureNapcat(configuredDir) {
 
 const flowState = { running: false, launched: false, error: null, dir: null }
 
+// 读 launch.log 末尾几行（启动失败的现场证据）
+function readLaunchLogTail(napcatDir, lines = 6) {
+  try {
+    const p = join(napcatDir, 'launch.log');
+    if (!existsSync(p)) return '（没生成 launch.log）';
+    const text = readFileSync(p, 'utf8').trim();
+    if (!text) return '（launch.log 是空的）';
+    return text.split('\n').slice(-lines).join(' ⏎ ');
+  } catch (e) {
+    return `（读日志失败：${e.message}）`;
+  }
+}
+
+// 启动后盯 WebUI 端口：就绪 → 提示可以取码了；超时 → 把 launch.log 末尾塞进 flowState.error
+function watchWebuiReady(napcatDir, timeoutMs = 45000) {
+  const info = getWebuiInfo(napcatDir);
+  const port = (info && info.port) || 6099;
+  const startedAt = Date.now();
+  const timer = setInterval(async () => {
+    try {
+      if (await isWebuiRunning(port)) {
+        clearInterval(timer);
+        installState.message = 'NapCat WebUI 已就绪，正在取二维码…';
+        return;
+      }
+      if (Date.now() - startedAt > timeoutMs) {
+        clearInterval(timer);
+        flowState.error = `NapCat 进程起了但 WebUI(${port}) 一直没就绪。launch.log 末尾：${readLaunchLogTail(napcatDir)}`;
+        installState.phase = 'error';
+        installState.message = 'NapCat 启动异常（详见页面提示与 launch.log）';
+      }
+    } catch {
+      /* 忽略单次探测失败 */
+    }
+  }, 2500);
+  if (timer.unref) timer.unref();
+}
+
 async function runLoginFlow({ configuredDir, wsPort, wsToken, qqNumber }) {
   if (flowState.running) {
     return { ok: false, reason: '登录流程已在进行中，请等当前步骤完成' };
@@ -585,6 +646,9 @@ async function runLoginFlow({ configuredDir, wsPort, wsToken, qqNumber }) {
     }
     flowState.launched = true;
     installState.message = 'NapCat 已启动，等二维码出现…';
+    // 后台盯着 WebUI 到底起没起来：起不来就把原因写进 flowState（前端显示"登录流程中断：…"），
+    // 免得一直停在"等二维码出现…"，让人以为还在加载（2026-09-16 用户反馈）
+    watchWebuiReady(hit.dir);
     return { ok: true, dir: hit.dir };
   } catch (e) {
     flowState.error = e.message;

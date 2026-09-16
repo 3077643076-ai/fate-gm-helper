@@ -7,7 +7,7 @@ const fs = require('fs');
 const path = require('path');
 
 const CARDS_DIR = 'X:/新三杯';
-const API = 'http://localhost:8100/api/character-cards';
+const API = 'http://127.0.0.1:8100/api/character-cards';
 const CAMPAIGN_ID = 999002; // 新三测试
 
 // ---------- 读取工具 ----------

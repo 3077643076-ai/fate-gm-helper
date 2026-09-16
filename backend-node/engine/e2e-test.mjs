@@ -1,5 +1,5 @@
 // M1 端到端 API 测试：完整走一遍引擎主流程（测试数据自带清理）
-const API = 'http://localhost:8100/api/engine'
+const API = 'http://127.0.0.1:8100/api/engine'
 const post = async (path, body) => {
   const r = await fetch(API + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
   return { code: r.status, body: await r.json() }

@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const http = require('http');
 
-const API = 'http://localhost:8100';
+const API = 'http://127.0.0.1:8100';
 
 function post(path, body) {
   return new Promise((resolve, reject) => {

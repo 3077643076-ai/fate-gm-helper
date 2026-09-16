@@ -3,7 +3,7 @@ setlocal
 cd /d "%~dp0"
 
 rem 引擎控制台启动器：构建前端 → 起后端 → Edge app 模式开独立深色窗口（MAA 风格）
-set "APP_URL=http://localhost:8100/engine"
+set "APP_URL=http://127.0.0.1:8100/engine"
 set "BACKEND_DIR=%~dp0backend-node"
 
 echo [Sanguo Engine] Building frontend...

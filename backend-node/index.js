@@ -21,6 +21,12 @@ const onebotService = require('./lib/onebot/service');
 
 const app = express();
 const PORT = process.env.PORT || 8100;
+// 只监听本机回环：
+//   ① 工作台本来就不对外（本地/私有工具），少一个暴露面
+//   ② 监听 0.0.0.0 会触发 Windows 防火墙"是否允许此应用访问网络"弹窗，
+//      而便携 exe 每次启动都解包到新的临时目录 → 路径一变就再弹一次（用户反馈"每次都有安全中心很烦"）
+// 需要局域网访问时再显式设 FATE_BIND_HOST=0.0.0.0
+const HOST = process.env.FATE_BIND_HOST || '127.0.0.1';
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
@@ -170,8 +176,8 @@ app.use((err, req, res, next) => {
   res.status(status).json({ error: err.message || '服务器错误' });
 });
 
-app.listen(PORT, () => {
-  console.log(`后端运行在 http://localhost:${PORT}`);
+app.listen(PORT, HOST, () => {
+  console.log(`后端运行在 http://${HOST}:${PORT}`);
   console.log(`API 列表: http://localhost:${PORT}/api`);
   // QQ 指令机器人：随后端启动（读 app_settings 里的连接配置，未启用则只打一行提示）
   onebotService.start();

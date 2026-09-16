@@ -1,5 +1,47 @@
 # NOTES.md
 
+## 2026-09-16（夜 14，登录 QQ 全链路修通：三个真 bug + 一个防火墙骚扰）
+
+**用户实测反馈**："NapCat 已启动，等二维码出现…"但永远不出码；另外"每次都有安全中心弹窗，很烦"。
+逐层查下来是四个独立问题：
+
+1. **`spawn` 的 Windows 引号坑（码出不来的直接原因）**
+   `launchNapcat` 原来是 `spawn('cmd.exe', ['/c', '...bat ... > "launch.log" 2>&1'])` ——
+   Node 在 Windows 上会把参数里的内层引号转义成 `\"`，而 **cmd 不认反斜杠转义** → 命令解析失败、
+   cmd 秒退（退出码 1）、连日志文件都不生成。但 `spawn` 自己返回成功（pid 有），所以流程状态写着
+   "NapCat 已启动…"，实际上什么都没起。手动在控制台跑同一个 bat 完全正常（NapCat 4.9.83 起来了）。
+   修法：去掉 shell 重定向，改成 `stdio: ['ignore','pipe','pipe']` 把启动器输出管道写进 `launch.log`；
+   bat 仍走 cmd，但整条命令再包一层引号 + `windowsVerbatimArguments: true`。
+   现在 launch.log 会真实记录 NapCat 的启动过程（含版本、WebUI token、二维码路径），排查有据可依。
+
+2. **"找 NapCat 目录"的逻辑没贯穿所有接口**
+   `ensureNapcat` 会自动发现本机已有安装（`~/Downloads/NapCat.Shell`），但 `/napcat/qrcode`、
+   `/napcat/status`、`/napcat/install/status` 只看 `config.napcatDir`，而配置里是空的 →
+   取码接口 400、状态显示 configured=false。修法：
+   新增 `resolveNapcatDir(config)`（配置目录 → 本机自动发现 → 数据目录），四个接口统一用它；
+   另外一键登录成功后**把自动发现的目录写回配置**，以后不再靠猜。
+
+3. **失败没有反馈**：新增 `watchWebuiReady()`，启动后盯 6099；超时就把 `launch.log` 末尾塞进
+   `flowError`，前端会显示"登录流程中断：…"而不是一直"等二维码出现…"。
+
+4. **"每次都有安全中心"= Windows 防火墙询问，根因是后端监听 `0.0.0.0`**
+   证据：防火墙规则里堆着一串 `%TEMP%\<随机>\sanguoengine.exe`（便携 exe 每次解包到新临时目录，
+   而监听 0.0.0.0 的程序每次都要问一遍）。修法：`app.listen(PORT, HOST)`，默认
+   `FATE_BIND_HOST=127.0.0.1`（只监听回环，不触发防火墙询问；要局域网访问再显式改回 0.0.0.0），
+   同时把仓库里写死的 `localhost:8100` 全换成 `127.0.0.1:8100`（避免 localhost 解析到 ::1 连不上）。
+   注意：NapCat 自己的 WebUI 仍监听 0.0.0.0:6099（它自己的默认行为），QQ.exe 的防火墙规则已存在，不会再弹。
+
+**实测（新代码，测试后端跑在 8101 + 正式库副本）**：
+- `POST /api/onebot/napcat/launch` → `launch.log` 成功生成且内容完整 → NapCat/QQ 进程起来 → WebUI 6099 就绪
+- `install/status` → `webuiRunning:true`、`installedDir:C:\Users\30776\Downloads\NapCat.Shell`
+- `GET /napcat/qrcode` → 返回真正的二维码 dataURL（修复前是 400）
+- 后端监听确认只有 `127.0.0.1`（不再是 0.0.0.0）
+
+**另外**：为了救活用户当时正开着的那版（旧代码），直接把 `napcatDir` 写进了正式库的
+`app_settings.onebot_bot_config`（该表字段是 `setting_key/setting_value`，不是 key/value）——
+所以那个实例不用重启也能取到码了。
+
+
 ## 2026-09-16（夜 13，调研归档：骰子核心生态 + 海豹的"内置协议端"思路）
 
 **用户问到的生态，查完归档到 `CLAUDE.md` 阶段 6（含实测计划）**：
