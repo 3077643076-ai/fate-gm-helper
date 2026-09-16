@@ -47,3 +47,23 @@ export function getNapcatStatus() {
 export function restartNapcat() {
   return request('/api/onebot/napcat/restart', { method: 'POST' })
 }
+
+// ---------- 独立 QQ 环境（机器人用自己的 QQ，GM 自己的 QQ 可同时在线） ----------
+
+// QQ 环境状态：{ localQq, independentQq, independentReady, usingQq, usingIndependent }
+export function getQqEnv() {
+  return request('/api/onebot/napcat/qq-env')
+}
+
+// 准备独立 QQ 环境：把本机 QQ 复制到数据目录（约 1.2GB），成功后自动切过去
+export function prepareIndependentQq(force = false) {
+  return request('/api/onebot/napcat/prepare-qq', {
+    method: 'POST',
+    body: JSON.stringify({ force }),
+  })
+}
+
+// 停止机器人（按 PID 精确停，含它自己那份 QQ；不动 GM 自己的 QQ）
+export function stopNapcat() {
+  return request('/api/onebot/napcat/stop', { method: 'POST' })
+}

@@ -83,6 +83,31 @@
         <span class="dot ok" /> 已连接——登录成功，去群里发 .指令 就能用了
       </p>
 
+      <!-- QQ 环境：机器人用"自己那份 QQ"还是"你本机的 QQ" -->
+      <div class="sheet qq-env-box">
+        <div class="sheet-title" style="font-size:0.95rem">QQ 环境（决定机器人会不会占用你自己的 QQ）</div>
+        <p class="sheet-note">
+          现在注入的是：<b>{{ qqEnv.usingIndependent ? '独立 QQ（机器人专用副本）' : '本机 QQ（你自己那个）' }}</b>
+          <br />
+          <span style="opacity:0.8">{{ qqEnv.usingQq || '（还没探测到本机 QQ）' }}</span>
+        </p>
+        <p class="sheet-note">
+          用<b>本机 QQ</b>时，一个 QQ 客户端只能登一个号 → 跑机器人就得先退掉你自己的 QQ。
+          点下面按钮准备一份<b>独立 QQ</b>（把本机 QQ 复制一份到工作台数据目录，约 1.2GB，SSD 上几秒），
+          之后机器人用自己的那份，<b>你的 QQ 可以照常开着</b>（2026-09-16 实测通过）。
+          腾讯 QQ 本体不允许随包分发，所以这里是复制你本机已装的 QQ，不随发行包走。
+        </p>
+        <div class="form-actions">
+          <button class="btn" :disabled="preparingQq" @click="doPrepareQq">
+            {{ preparingQq ? '正在复制…' : (qqEnv.independentReady ? '重新准备独立 QQ 环境' : '准备独立 QQ 环境（推荐）') }}
+          </button>
+          <button v-if="install.webuiRunning || status.connected" class="btn small" @click="doStopBot">
+            停止机器人（不动你的 QQ）
+          </button>
+          <span v-if="qqEnvMsg" class="save-msg">{{ qqEnvMsg }}</span>
+        </div>
+      </div>
+
       <!-- 重启 NapCat：工作台升级过 NapCat 网络配置（如补开 HTTP 服务端）后点它生效 -->
       <div v-if="status.connected" class="form-actions">
         <button class="btn small" :disabled="napcatRestarting" @click="doRestartNapcat">
@@ -142,6 +167,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import {
   getOnebotConfig, putOnebotConfig, getOnebotStatus, restartOnebot,
   launchNapcat, getNapcatInstallStatus, getNapcatQrcode, restartNapcat,
+  getQqEnv, prepareIndependentQq, stopNapcat,
 } from '../../services/onebot'
 
 // 表单数据（accessToken：后端只回占位符"(已配置)"，原样传回表示不修改）
@@ -203,6 +229,48 @@ async function refreshStatus() {
     qrcode.value = null
   }
 }
+
+// QQ 环境（独立 QQ 副本 vs 本机 QQ）
+const qqEnv = ref({ usingQq: '', usingIndependent: false, independentReady: false, localQq: '', independentQq: '' })
+const preparingQq = ref(false)
+const qqEnvMsg = ref('')
+
+async function refreshQqEnv() {
+  try {
+    qqEnv.value = await getQqEnv()
+  } catch { /* 后端短暂不可达忽略 */ }
+}
+
+async function doPrepareQq() {
+  preparingQq.value = true
+  qqEnvMsg.value = '正在复制本机 QQ（约 1.2GB，请稍等）…'
+  try {
+    const r = await prepareIndependentQq(qqEnv.value.independentReady)
+    qqEnvMsg.value = r.skipped ? '独立 QQ 环境已存在，已切过去' : '独立 QQ 环境已就绪，已切过去；下次登录就用它'
+    await refreshQqEnv()
+    await refreshFlow()
+  } catch (e) {
+    qqEnvMsg.value = `准备失败：${e.message}`
+  } finally {
+    preparingQq.value = false
+  }
+}
+
+async function doStopBot() {
+  qqEnvMsg.value = '正在停止机器人…'
+  try {
+    const r = await stopNapcat()
+    qqEnvMsg.value = r.ok ? `机器人已停止（pid ${r.stoppedPid}），你的 QQ 不受影响` : r.reason
+    await refreshFlow()
+  } catch (e) {
+    qqEnvMsg.value = `停止失败：${e.message}`
+  }
+}
+
+// 进入页面时读一次 QQ 环境
+onMounted(() => {
+  refreshQqEnv()
+})
 
 // 登录流程进度轮询：WebUI 就绪后切换到二维码轮询
 async function refreshFlow() {

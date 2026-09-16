@@ -56,6 +56,7 @@ router.put('/config', (req, res) => {
   if (typeof wsUrl === 'string') patch.wsUrl = wsUrl.trim();
   if (typeof selfId === 'string') patch.selfId = selfId.trim();
   if (typeof napcatDir === 'string') patch.napcatDir = napcatDir.trim();
+  if (typeof req.body?.qqPath === 'string') patch.qqPath = req.body.qqPath.trim();
   if (napcatWebuiPort !== undefined && Number.isFinite(Number(napcatWebuiPort))) {
     patch.napcatWebuiPort = Number(napcatWebuiPort);
   }
@@ -101,6 +102,7 @@ router.post('/napcat/launch', (req, res) => {
     wsPort,
     wsToken: config.accessToken,
     qqNumber: config.selfId,
+    qqPath: config.qqPath || '', // 填了就用独立 QQ 环境（机器人不占 GM 自己的 QQ）
   });
   if (!result.ok && !napcat.flowState.running) {
     return res.status(400).json({ error: result.reason });
@@ -202,4 +204,46 @@ function syncAgentNapcatConfig(wsUrl) {
   });
 }
 
+
+// ---------- 独立 QQ 环境（C1：机器人用自己的那份 QQ，GM 的 QQ 可同时在线） ----------
+// 为什么需要：NapCat 注入 QQ 客户端，一个客户端只能登一个号；复制一份给机器人后两边互不相干
+// 合规说明：腾讯 QQ 本体不允许随包分发 → 这里只在**用户本机**复制，不进发行包
+
+// QQ 环境状态：本机 QQ 在哪、独立环境准备好没有、当前注入的是哪份
+router.get('/napcat/qq-env', (_req, res) => {
+  const db = require('../../db').getDb();
+  const config = service.readConfig(db);
+  const localQq = napcat.detectLocalQqPath();
+  const independent = napcat.independentQqPath();
+  res.json({
+    localQq: localQq || null,
+    independentQq: independent,
+    independentReady: require('node:fs').existsSync(independent),
+    usingQq: config.qqPath || localQq || null,
+    usingIndependent: Boolean(config.qqPath),
+  });
+});
+
+// 准备独立 QQ 环境：把本机 QQ 复制到数据目录（约 1.2GB，SSD 上几秒）
+router.post('/napcat/prepare-qq', (req, res) => {
+  const db = require('../../db').getDb();
+  const result = napcat.prepareIndependentQQ({ force: Boolean(req.body?.force) });
+  if (!result.ok) return res.status(400).json({ error: result.reason });
+  // 准备好就切到独立 QQ（之后机器人不再占用 GM 自己的 QQ）
+  const config = service.writeConfig(db, { qqPath: result.qqPath });
+  res.json({ ok: true, ...result, config: { qqPath: config.qqPath } });
+});
+
+// 停止机器人（按 PID 精确停，含它自己那份 QQ；不动 GM 的 QQ）
+router.post('/napcat/stop', (_req, res) => {
+  const db = require('../../db').getDb();
+  const config = service.readConfig(db);
+  const dir = resolveNapcatDir(config);
+  if (!dir) return res.status(400).json({ error: '还没发现 NapCat 目录' });
+  const result = napcat.stopNapcatPersistent(dir);
+  napcat.flowState.launched = false;
+  napcat.installState.message = result.ok ? '机器人已停止' : result.reason;
+  service.poke();
+  res.json(result);
+});
 module.exports = router;

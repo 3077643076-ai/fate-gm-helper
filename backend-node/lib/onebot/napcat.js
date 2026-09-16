@@ -7,10 +7,10 @@
 //      WebUI 接口非公开文档，失败时前端降级为"打开 NapCat 扫码页"按钮）
 // 依据：https://napneko.github.io/config/basic —— webui.json / onebot11.json 的位置与格式
 
-const { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, createWriteStream } = require('node:fs');
+const { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, createWriteStream, openSync } = require('node:fs');
 const { join } = require('node:path');
 const crypto = require('node:crypto');
-const { spawn } = require('node:child_process');
+const { spawn, execFileSync } = require('node:child_process');
 const { dataFile } = require('../data-dir');
 const { copyDirSync } = require('../copy-dir');
 
@@ -225,66 +225,164 @@ async function getLoginQrcode({ napcatDir }) {
 
 // ---------- 进程托管 ----------
 
-// 拉起 NapCat。启动器按优先级探测（实测结论）：
-//   launcher-user.bat（Shell 版用户模式，免管理员，实测可用）
-//   > napcat.bat / launcher.bat（OneKey 的 bat；launcher.bat 需管理员会自动 UAC）
-//   > NapCatWinBootMain.exe（OneKey 引导器，需先跑过 NapCatInstaller）
-// QQ 号作为参数传入（快速登录）；没填 QQ 号也能起（首次去 WebUI 扫码）
-function launchNapcat({ napcatDir, qqNumber }) {
+// 找本机 QQ.exe 路径（和 launcher-user.bat 一样的注册表探测，但拿回来我们自己用）
+function detectLocalQqPath() {
+  const env = process.env;
+  const candidates = [];
+  // 1) 注册表卸载信息（bat 用的就是这个键）
+  for (const key of [
+    'HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\QQ',
+    'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\QQ',
+  ]) {
+    try {
+      const out = execFileSync('reg', ['query', key, '/v', 'UninstallString'], {
+        encoding: 'utf8',
+        timeout: 5000,
+        windowsHide: true,
+      });
+      const m = out.match(/REG_SZ\s+(.+?)\s*$/m);
+      if (m) {
+        const dir = require('node:path').dirname(m[1].replace(/"/g, '').trim());
+        candidates.push(join(dir, 'QQ.exe'));
+      }
+    } catch { /* 键不存在就算了 */ }
+  }
+  // 2) 常见安装位置兜底
+  candidates.push(join(env['ProgramFiles'] || 'C:\\Program Files', 'Tencent', 'QQNT', 'QQ.exe'));
+  candidates.push(join(env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Tencent', 'QQNT', 'QQ.exe'));
+  return candidates.find((p) => p && existsSync(p)) || '';
+}
+
+// 独立 QQ 环境：把本机 QQ 复制一份给机器人用
+// 为什么要复制：NapCat 是注入 QQ 客户端的，一个客户端只能登一个号 →
+//   复制一份之后机器人用自己的那份，**GM 自己的 QQ 可以照常在线**（2026-09-16 实测通过）
+// 注意：腾讯 QQ 本体不允许随包分发，所以这里只在用户本机做复制，不进发行包
+function independentQqDir() {
+  return dataFile('qqnt-bot');
+}
+
+function independentQqPath() {
+  return join(independentQqDir(), 'QQ.exe');
+}
+
+/** 复制本机 QQ 到数据目录（已存在就跳过；robocopy 快，失败退回逐文件拷贝） */
+function prepareIndependentQQ({ force = false } = {}) {
+  const srcQq = detectLocalQqPath();
+  if (!srcQq) {
+    return { ok: false, reason: '没找到本机已安装的 QQ（NapCat 本来也要求装 QQ），请先安装 QQ 再试' };
+  }
+  const srcDir = require('node:path').dirname(srcQq);
+  const destDir = independentQqDir();
+  const destQq = independentQqPath();
+  if (existsSync(destQq) && !force) {
+    return { ok: true, qqPath: destQq, skipped: true, message: '独立 QQ 环境已存在，直接用' };
+  }
+  mkdirSync(destDir, { recursive: true });
+  try {
+    execFileSync('robocopy', [srcDir, destDir, '/E', '/MT:16', '/NFL', '/NDL', '/NJH', '/NJS', '/NP', '/R:1', '/W:1'], {
+      stdio: 'ignore',
+      timeout: 15 * 60 * 1000,
+      windowsHide: true,
+    });
+  } catch (e) {
+    // robocopy 成功也返回 1-7；>=8 才算真失败
+    if (typeof e.status !== 'number' || e.status >= 8) {
+      try {
+        const { copyDirSync } = require('../copy-dir');
+        copyDirSync(srcDir, destDir);
+      } catch (e2) {
+        return { ok: false, reason: `复制 QQ 失败：${e2.message}` };
+      }
+    }
+  }
+  if (!existsSync(destQq)) return { ok: false, reason: '复制完成但没找到 QQ.exe，请检查数据目录权限' };
+  return { ok: true, qqPath: destQq, copiedFrom: srcDir, message: '独立 QQ 环境已就绪' };
+}
+
+// 拉起 NapCat。**直接调 NapCatWinBootMain.exe，不走 launcher-user.bat**：
+//   bat 做的事就三件 —— 设 5 个环境变量、写 loadNapCat.js、调启动器；末尾还有个 pause
+//   那个 pause 就是"每次都弹个终端窗口"的元凶（关掉不影响机器人，但很烦）
+// 用 detached + windowsHide：机器人是**独立进程**，重启工作台不会再把它连带杀掉
+function launchNapcat({ napcatDir, qqNumber, qqPath }) {
   if (napcatProc && !napcatProc.killed) {
     return { ok: false, reason: 'NapCat 已在运行（由工作台拉起）' };
   }
-  const candidates = [
-    { file: 'launcher-user.bat', args: qqNumber ? [String(qqNumber)] : [] },
-    { file: 'launcher-win10-user.bat', args: qqNumber ? [String(qqNumber)] : [] },
-    { file: 'napcat.bat', args: qqNumber ? [String(qqNumber)] : [] },
-    { file: 'launcher.bat', args: qqNumber ? [String(qqNumber)] : [] },
-    { file: 'NapCatWinBootMain.exe', args: qqNumber ? [String(qqNumber)] : [] },
-  ];
-  for (const c of candidates) {
-    const full = join(napcatDir, c.file);
-    if (!existsSync(full)) continue;
-    // 启动器输出用管道写进 launch.log —— **不要用 cmd 的 `>` 重定向**：
-    // Node 在 Windows 上会把参数里的内层引号转义成 \"，而 cmd 不认反斜杠转义，
-    // 结果是命令解析失败、cmd 秒退（退出码 1）且连日志文件都不会生成。
-    // 症状就是"点了登录一直显示等二维码"（2026-09-16 实测踩到，spawn 却返回成功）
-    const logFile = join(napcatDir, 'launch.log');
-    let logStream = null;
-    try {
-      logStream = createWriteStream(logFile, { flags: 'a' });
-    } catch { /* 日志失败不影响启动 */ }
-
-    const isBat = c.file.endsWith('.bat');
-    if (isBat) {
-      // .bat 必须经 cmd：整条命令再包一层引号 + windowsVerbatimArguments，避开 Node 的引号转义
-      napcatProc = spawn('cmd.exe', ['/c', `""${full}" ${c.args.join(' ')}"`], {
-        cwd: napcatDir,
-        windowsHide: true,
-        windowsVerbatimArguments: true,
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
-    } else {
-      napcatProc = spawn(full, c.args, {
-        cwd: napcatDir,
-        windowsHide: true,
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
-    }
-    if (logStream && napcatProc.stdout && napcatProc.stderr) {
-      napcatProc.stdout.pipe(logStream);
-      napcatProc.stderr.pipe(logStream);
-    }
-    napcatProc.on('error', (e) => {
-      napcatProc = null;
-      flowState.error = `拉起 NapCat 失败：${e.message}`;
-    });
-    napcatProc.on('exit', () => { napcatProc = null; });
-    return { ok: true, launcher: c.file };
+  const bootExe = join(napcatDir, 'NapCatWinBootMain.exe');
+  const hookDll = join(napcatDir, 'NapCatWinBootHook.dll');
+  if (!existsSync(bootExe) || !existsSync(hookDll)) {
+    return { ok: false, reason: 'NapCat 目录里没有 NapCatWinBootMain.exe / NapCatWinBootHook.dll，请确认目录正确' };
   }
-  return {
-    ok: false,
-    reason: '目录里没找到 launcher-user.bat / napcat.bat / NapCatWinBootMain.exe，请确认填的是 NapCat 解压目录',
+  const targetQq = qqPath && existsSync(qqPath) ? qqPath : detectLocalQqPath();
+  if (!targetQq) {
+    return { ok: false, reason: '没找到要注入的 QQ.exe（本机没装 QQ？或独立 QQ 环境没准备好）' };
+  }
+
+  // 1) 写引导文件（原来是 bat 里那句 echo）
+  const mainPath = join(napcatDir, 'napcat.mjs').replace(/\\/g, '/');
+  try {
+    writeFileSync(join(napcatDir, 'loadNapCat.js'), `(async () => {await import("file:///${mainPath}")})()\n`);
+  } catch (e) {
+    return { ok: false, reason: `写 loadNapCat.js 失败：${e.message}` };
+  }
+
+  // 2) 环境变量（和 bat 一致）
+  const env = {
+    ...process.env,
+    NAPCAT_PATCH_PACKAGE: join(napcatDir, 'qqnt.json'),
+    NAPCAT_LOAD_PATH: join(napcatDir, 'loadNapCat.js'),
+    NAPCAT_INJECT_PATH: hookDll,
+    NAPCAT_LAUNCHER_PATH: bootExe,
+    NAPCAT_MAIN_PATH: mainPath,
   };
+
+  // 3) 直接起启动器：输出落日志文件（不弹终端），进程脱离本程序
+  const logFile = join(napcatDir, 'launch.log');
+  let logFd = 'ignore';
+  try {
+    logFd = openSync(logFile, 'a');
+  } catch { /* 日志失败不影响启动 */ }
+
+  const args = [targetQq, hookDll];
+  if (qqNumber) args.push(String(qqNumber));
+  const child = spawn(bootExe, args, {
+    cwd: napcatDir,
+    env,
+    detached: true, // 关键：脱离工作台进程树，重启工作台不会连带杀它
+    windowsHide: true, // 关键：不弹终端窗口
+    stdio: ['ignore', logFd === 'ignore' ? 'ignore' : logFd, logFd === 'ignore' ? 'ignore' : logFd],
+  });
+  child.unref();
+  napcatProc = child;
+
+  // 记 PID：停止时按 PID 精确停（不再 taskkill 整个进程树）
+  const pidFile = join(napcatDir, 'napcat.pid');
+  try {
+    writeFileSync(pidFile, String(child.pid));
+  } catch { /* 忽略 */ }
+
+  return { ok: true, launcher: 'NapCatWinBootMain.exe', pid: child.pid, injectedQq: targetQq };
+}
+
+/** 停止机器人：按 napcat.pid 精确停（含它自己那份 QQ 的子进程），不影响 GM 的 QQ */
+function stopNapcatPersistent(napcatDir) {
+  const pidFile = join(napcatDir, 'napcat.pid');
+  let pid = '';
+  try {
+    pid = readFileSync(pidFile, 'utf8').trim();
+  } catch { /* 没有 PID 文件 */ }
+  if (!pid || !/^\d+$/.test(pid)) {
+    return { ok: false, reason: '没有记录到机器人进程 PID（可能不是工作台拉起的）' };
+  }
+  try {
+    // /T 连带它的 QQ 子进程（那份副本 QQ 属于机器人，该一起停）
+    execFileSync('taskkill', ['/PID', pid, '/T', '/F'], { stdio: 'ignore', timeout: 20000, windowsHide: true });
+  } catch (e) {
+    return { ok: false, reason: `停止失败（进程可能已退出）：${e.message}` };
+  }
+  try {
+    writeFileSync(pidFile, '');
+  } catch { /* 忽略 */ }
+  return { ok: true, stoppedPid: pid };
 }
 
 function stopNapcat() {
@@ -293,18 +391,18 @@ function stopNapcat() {
       // 关键：用 taskkill /T 杀整棵进程树。launcher.bat(cmd) -> NapCatWinBootMain.exe
       // -> QQ.exe 是三层嵌套，只 kill cmd 会留下孤儿实例继续占端口/登录
       const { execSync } = require('node:child_process');
-      execSync(`taskkill /PID ${napcatProc.pid} /T /F`, { stdio: 'ignore', timeout: 10000 });
+      execSync(`taskkill /PID ${napcatProc.pid} /T /F`, { stdio: 'ignore', timeout: 10000, windowsHide: true });
     } catch { /* 进程可能已退出 */ }
   }
   napcatProc = null;
 }
 
 // 重启 NapCat（onebot11.json 改动后需要重启才生效）
-async function restartNapcat({ napcatDir, qqNumber }) {
+async function restartNapcat({ napcatDir, qqNumber, qqPath }) {
   stopNapcat();
   // 等旧进程完全退出、端口释放
   await new Promise(resolve => setTimeout(resolve, 1500));
-  return launchNapcat({ napcatDir, qqNumber });
+  return launchNapcat({ napcatDir, qqNumber, qqPath });
 }
 
 // ---------- 自动下载安装（海豹级傻瓜化：用户零操作，点一个按钮全搞定） ----------
@@ -621,7 +719,7 @@ function watchWebuiReady(napcatDir, timeoutMs = 45000) {
   if (timer.unref) timer.unref();
 }
 
-async function runLoginFlow({ configuredDir, wsPort, wsToken, qqNumber }) {
+async function runLoginFlow({ configuredDir, wsPort, wsToken, qqNumber, qqPath }) {
   if (flowState.running) {
     return { ok: false, reason: '登录流程已在进行中，请等当前步骤完成' };
   }
@@ -640,7 +738,7 @@ async function runLoginFlow({ configuredDir, wsPort, wsToken, qqNumber }) {
 
     // 第 3 步：启动 NapCat
     installState.message = '启动 NapCat…';
-    const launch = launchNapcat({ napcatDir: hit.dir, qqNumber });
+    const launch = launchNapcat({ napcatDir: hit.dir, qqNumber, qqPath });
     if (!launch.ok && !String(launch.reason || '').includes('已在运行')) {
       throw new Error(launch.reason);
     }
@@ -673,4 +771,8 @@ module.exports = {
   detectInstalled,
   detectLocalNapcat,
   findConfigDir,
+  detectLocalQqPath,
+  prepareIndependentQQ,
+  independentQqPath,
+  stopNapcatPersistent,
 };

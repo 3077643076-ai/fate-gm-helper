@@ -28,6 +28,8 @@ const DEFAULT_CONFIG = {
   selfId: '',
   // NapCat 托管：本机 NapCat 解压目录 + WebUI 端口（海豹式网页扫码登录用）
   napcatDir: '',
+  // 留空 = 注入本机 QQ（此时 GM 自己的 QQ 得先退）；填了就用那份 QQ（独立环境，可并存）
+  qqPath: '',
   napcatWebuiPort: 6099,
   // 静音模式：true 时拦截一切"向群发消息"的动作（回执/催交/指令回复全不出门），
   // 只读操作（读公告/群列表等）不受影响

@@ -1,5 +1,33 @@
 # NOTES.md
 
+## 2026-09-16（夜 18，C1 落地：机器人用独立 QQ 副本，和 GM 自己的 QQ 并存 ✓ 实测通过）
+
+**用户拍板走 C1**（"要不改成和海豹一致"的具体落法），并提醒"记得打包在一起"。
+
+**实测验证（本机，2026-09-16 22:19–22:25）**：
+- 把 `C:\Program Files\Tencent\QQNT`（1172MB）robocopy 到 `backend-node/data/qqnt-bot/`（**1.9 秒**）
+- **不走 launcher-user.bat**，直接 `NapCatWinBootMain.exe <副本QQ.exe> <Hook.dll> 715218931`，
+  自己写 `loadNapCat.js` + 设 5 个环境变量（bat 里就这三件事），`detached + windowsHide` → **不弹终端**
+- 结果：QQ 进程来自副本 ✓；NapCat WebUI 6099 ✓；OneBot WS 3001 ✓；工作台 `connected: true` ✓
+- **22:24 用户打开自己的 QQ（本机 QQ，9 个进程）→ 机器人依然在线、无"下线/被踢"，两边同时在线 ✓✓**
+  （这就是"和 GM 自己的 QQ 并存"成立，零下载、零协议改动、零 Signer Token）
+
+**代码改动（已实现，待用新代码实跑一次 + 重打包）**：
+- `lib/onebot/napcat.js`：
+  - `detectLocalQqPath()`（注册表探测，和 bat 同源）+ `prepareIndependentQQ()`（robocopy 复制本机 QQ 到
+    `data/qqnt-bot/`，失败退回 `copyDirSync`）+ `independentQqPath()`（`data/qqnt-bot/QQ.exe`）
+  - `launchNapcat({ napcatDir, qqNumber, qqPath })` 改成**直接调启动器 + detached + windowsHide + 日志落文件**，
+    PID 写 `napcat.pid`；`stopNapcatPersistent()` 按 PID 精确停（含副本 QQ 的子进程）
+  - 配置新增 `qqPath`：留空 = 注入本机 QQ（GM 需退自己 QQ）；填了 = 用独立 QQ（可并存）
+- `lib/onebot/routes.js`：新增 `GET /napcat/qq-env`、`POST /napcat/prepare-qq`（复制并自动切换）、
+  `POST /napcat/stop`（按 PID 停，不动 GM 的 QQ）
+- 前端 `BotConnection.vue`：新增"QQ 环境"区块 —— 显示当前注入的是哪份 QQ、一键准备独立 QQ、
+  停止机器人按钮，并写明"腾讯 QQ 不允许随包分发，这里是复制你本机已装的 QQ"
+
+**合规要点（已跟用户说明）**：NapCat 可非商业随包分发（已附许可与来源）；**腾讯 QQ 本体不可随包分发** →
+发行包里放"一键复制本机 QQ"的功能，而不是把 1.2GB 的腾讯二进制塞进包里。
+# NOTES.md
+
 ## 2026-09-16（夜 17，澄清真实痛点：不是选协议端，是 NapCat 进程管理）
 
 用户澄清："每次都会弹出 napcat 的终端（关了也连得上）；改这个系统时它要重启，我没好办法；
