@@ -43,15 +43,89 @@ router.get('/status', (req, res) => {
   if (!campaignId) return res.status(400).json({ error: '需要 campaignId（战役 ID）' })
   const round = Number(req.query.round) || currentRound(campaignId)
   const phase = req.query.phase || '昼'
+  // 行动列表要能直接看出"谁做的"：代号（unit_registry.code）+ 原文（raw_text）+ 该职阶的私组群名
+  // 之前只 SELECT 了 unit_key/action_key/target/status，等于把库里已有的信息藏着不给前端
+  const className = (unitKey) => String(unitKey || '').slice(0, 1)
+  const groupRows = db.prepare(
+    `SELECT class, group_id, group_name FROM engine_group_binding WHERE campaign_id = ? AND kind = 'private'`,
+  ).all(campaignId)
+  const groupByClass = Object.fromEntries(groupRows.map((g) => [g.class, g]))
+  const actions = db.prepare(`
+    SELECT a.id, a.unit_key, a.slot, a.action_key, a.target, a.variant, a.raw_text, a.status, a.settle_note, a.created_at,
+           u.code AS code, u.side AS side, u.missing AS card_missing, u.card_id AS card_id
+      FROM engine_actions a
+      LEFT JOIN unit_registry u ON u.unit_key = a.unit_key
+     WHERE a.campaign_id = ? AND a.round = ? AND a.phase = ?
+     ORDER BY a.id`).all(campaignId, round, phase)
+    .map((a) => {
+      const cls = className(a.unit_key)
+      const g = groupByClass[cls] || null
+      return { ...a, class: cls, groupId: g?.group_id || null, groupName: g?.group_name || null }
+    })
   res.json({
     round,
     phase,
     locations: db.prepare(`SELECT unit_key, leyline FROM engine_unit_location WHERE campaign_id = ? ORDER BY unit_key`).all(campaignId),
     activeEffects: db.prepare(`SELECT effect_name, scope, owner, expires FROM engine_active_effects WHERE campaign_id = ?`).all(campaignId),
-    actions: db.prepare(`SELECT unit_key, action_key, target, status, settle_note FROM engine_actions WHERE campaign_id = ? AND round = ? AND phase = ? ORDER BY id`).all(campaignId, round, phase),
+    actions,
     pendingRulings: db.prepare(`SELECT id, kind, context, ai_guess FROM engine_pending_ruling WHERE campaign_id = ? AND status = 'open'`).all(campaignId),
     openTickets: db.prepare(`SELECT id, role, action_name, target FROM judgment_ticket WHERE status = 'open'`).all(),
   })
+})
+
+// ---------- 职阶群玩家：回答"这个职阶是谁"（结算前页的行动表要显示 QQ 名） ----------
+// 数据源：本战役的私组（职阶群）成员列表（NapCat get_group_member_list），排除机器人自己。
+// 私组通常只有"玩家 + 机器人"，所以剩下的就是那个玩家的群名片。
+// 缓存：成功 5 分钟、失败 20 秒（机器人没上线时前端显示"—"，且不拖慢 status 轮询）。
+const playersCache = new Map() // campaignId -> { at, ttl, data }
+
+router.get('/players', async (req, res) => {
+  const campaignId = requireCampaignId(req.query.campaignId)
+  if (!campaignId) return res.status(400).json({ error: '需要 campaignId（战役 ID）' })
+  const cached = playersCache.get(campaignId)
+  if (cached && Date.now() - cached.at < cached.ttl) return res.json({ ...cached.data, cached: true })
+
+  const groups = db.prepare(
+    `SELECT class, group_id, group_name FROM engine_group_binding WHERE campaign_id = ? AND kind = 'private' ORDER BY class`,
+  ).all(campaignId)
+
+  let selfId = ''
+  try {
+    const info = await callNapcat('', 'get_login_info', {})
+    selfId = String(info?.user_id ?? info?.userId ?? '')
+  } catch { /* 机器人没上线，下面每个群都会各自失败，统一给原因 */ }
+
+  // 把底层报错翻译成人话：WS 没连上时 callNapcat 会回落到 HTTP，base 为空 →
+  // "Failed to parse URL from /get_group_member_list" 这种信息对使用者毫无意义
+  const humanize = (msg) => {
+    const s = String(msg || '')
+    if (/Failed to parse URL|ECONNREFUSED|fetch failed|socket|未连接|连接断开/i.test(s)) {
+      return '机器人未连接 NapCat：先在设置→机器人连接里扫码登录，就能读到各职阶群的群名片'
+    }
+    return s || '未知错误'
+  }
+
+  const players = {}
+  let reason = null
+  for (const g of groups) {
+    try {
+      const members = await callNapcat('', 'get_group_member_list', { group_id: g.group_id })
+      const list = (Array.isArray(members) ? members : [])
+        .filter((m) => String(m.user_id ?? m.userId ?? '') !== selfId)
+        .map((m) => ({
+          qq: String(m.user_id ?? m.userId ?? ''),
+          // 群名片优先（玩家通常把状态写在名片里），没有就用昵称
+          name: String(m.card || m.nickname || m.user_id || ''),
+        }))
+      players[g.class] = { groupId: g.group_id, groupName: g.group_name, members: list }
+    } catch (e) {
+      players[g.class] = { groupId: g.group_id, groupName: g.group_name, members: [], error: humanize(e.message) }
+      reason = reason || humanize(e.message)
+    }
+  }
+  const data = { players, botOnline: !reason, reason }
+  playersCache.set(campaignId, { at: Date.now(), ttl: reason ? 20000 : 5 * 60 * 1000, data })
+  res.json(data)
 })
 
 // ---------- 登记行动：文本 → 多行动解析（切分器+别名归一） → 逐条入库（失败片段进需裁决） ----------

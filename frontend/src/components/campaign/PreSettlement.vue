@@ -95,18 +95,36 @@
       </p>
       <table v-if="engineActions.length" class="sheet-table">
         <thead>
-          <tr><th>单位</th><th>行动</th><th>目标</th><th>状态</th><th>结算备注</th></tr>
+          <tr>
+            <th>单位</th>
+            <th>代号</th>
+            <th>玩家（QQ 名）</th>
+            <th>行动</th>
+            <th>目标</th>
+            <th>原文</th>
+            <th>状态</th>
+            <th>结算备注</th>
+          </tr>
         </thead>
         <tbody>
           <tr v-for="a in engineActions" :key="a.id ?? `${a.unit_key}-${a.action_key}`">
-            <td>{{ a.unit_key }}</td>
+            <td :title="a.groupName ? `${a.groupName}（${a.groupId}）` : ''">{{ a.unit_key }}</td>
+            <td>
+              {{ a.code || '—' }}
+              <span v-if="a.card_missing === 1" class="warn-tip" style="font-size:0.72rem">（卡未对上）</span>
+            </td>
+            <td>{{ playerOf(a) }}</td>
             <td>{{ a.action_key }}</td>
             <td>{{ a.target || '—' }}</td>
+            <td class="content-cell">{{ a.raw_text || '—' }}</td>
             <td :class="{ 'cell-auto': a.status === 'settled' }">{{ a.status }}</td>
             <td>{{ a.settle_note || '—' }}</td>
           </tr>
         </tbody>
       </table>
+      <p v-if="engineActions.length && !playersLoaded" class="sheet-note">
+        玩家一列取自各职阶私组的群成员（机器人需在线）：{{ playersHint || '还没取到' }}
+      </p>
       <p v-else class="empty-tip">
         引擎里还没有登记行动。点上方"AI 代收行动"解析各群公告后，结果会出现在这里。
       </p>
@@ -120,7 +138,7 @@ import { ref, computed, watch } from 'vue'
 import { useCurrentCampaign } from '../../composables/useCurrentCampaign'
 import { listCurrentSubmissions } from '../../services/actionSubmission'
 import { getCurrentRound, listAllRounds, roundLabel, roundPhase } from '../../services/round'
-import { getAgentConfig, checkNotices, remindGroups, runAgentCollect, getEngineStatus } from '../../services/engine'
+import { getAgentConfig, checkNotices, remindGroups, runAgentCollect, getEngineStatus, listUnitPlayers } from '../../services/engine'
 import { putOnebotConfig, getOnebotStatus } from '../../services/onebot'
 
 const { current } = useCurrentCampaign()
@@ -131,6 +149,9 @@ const currentRoundLabel = ref('—')
 const noticeResult = ref(null)
 const missingGroups = ref([])
 const engineActions = ref([])      // 引擎登记的行动（AI 代收/标准话术解析结果），按选中回合拉
+const unitPlayers = ref({})        // 职阶 → 私组群成员（QQ 名），来自 /api/engine/players
+const playersHint = ref('')
+const playersLoaded = ref(false)
 const checking = ref(false)
 const reminding = ref(false)
 const collecting = ref(false)
@@ -213,6 +234,29 @@ async function loadEngineActions() {
   } catch {
     engineActions.value = []
   }
+  await loadUnitPlayers()
+}
+
+// 玩家（QQ 名）：职阶 → 私组群成员的群名片。机器人不在线时后端返回空，这里显示"—"并给出原因
+async function loadUnitPlayers() {
+  if (!campaignId.value) { unitPlayers.value = {}; playersLoaded.value = false; return }
+  try {
+    const r = await listUnitPlayers(campaignId.value)
+    unitPlayers.value = r?.players || {}
+    playersLoaded.value = Boolean(r?.botOnline)
+    playersHint.value = r?.botOnline ? '' : r?.reason || '机器人未在线，先扫码登录后可取到群名片'
+  } catch (e) {
+    unitPlayers.value = {}
+    playersLoaded.value = false
+    playersHint.value = e.message
+  }
+}
+
+// 某一行的玩家显示：该职阶私组里除机器人外的成员（通常就一个玩家）
+function playerOf(action) {
+  const g = unitPlayers.value?.[action.class]
+  if (!g || !g.members?.length) return '—'
+  return g.members.map((m) => m.name || m.qq).join('、')
 }
 
 // NapCat HTTP 地址：优先读 AI 助手配置；没配也能工作（后端指令优先走 WS 通道，

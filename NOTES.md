@@ -1,5 +1,40 @@
 # NOTES.md
 
+## 2026-09-16（夜 15，"引擎登记的行动"表补 代号 / 玩家 QQ 名 / 原文）
+
+**用户需求**：结算前页那张"引擎登记的行动"表只有 `x从/x御`，看不出是谁；要加**代号**和**QQ 名**，
+最好连**原文**一起显示；另外提了句"上面的表没有做持久化"。
+
+**查证结论**：
+- **原文库里有**：`engine_actions.raw_text`（"乐不思蜀" / "干涉许都" / "机动-邺城"）—— 只是
+  `/api/engine/status` 的 SELECT 只取了 unit_key/action_key/target/status/settle_note，把已有的信息藏起来了
+- **代号库里有**：`unit_registry`（unit_key/class/side/**code**/card_id/**missing**），
+  弓从=司马师、弓御=火焰驹、杀从=贾诩… 已经从角色卡对上了；`missing=1` 表示这张卡还没对上
+- **QQ 名库里没有**：`character_card` 没有玩家/QQ 字段。两条来源：
+  ① 私组（职阶群）成员列表（NapCat `get_group_member_list`，群名片优先）—— 私组一般就是"玩家+机器人"
+  ② 读群公告时 OneBot 会返回 `sender_id`（发公告的人），**我们之前丢掉了**（qqport 只取了 text）
+- 上面那张表**其实是持久化的**（`action_submission` 表）；这场的 `action_submission` 是 0 行，
+  因为大家都走"群公告 → AI 代收"（落 `engine_actions`），所以上面空着像"没存"
+
+**本次改动**：
+- `engine/router.mjs` `/status`：actions 改成 JOIN `unit_registry` 带出 `code/side/card_missing/card_id`，
+  并补 `id/slot/raw_text/created_at` + 按职阶挂上私组 `groupId/groupName`（前端单位列可悬停看群名）
+- 新增 `GET /api/engine/players?campaignId=`：逐职阶查私组成员（排除机器人自己，`get_login_info` 取 selfId），
+  群名片优先；**缓存 5 分钟**（失败缓存 20 秒，机器人上线后能快速恢复）；报错翻译成人话
+  （"机器人未连接 NapCat：先扫码登录…"），不再吐 `Failed to parse URL`
+- 前端 `PreSettlement.vue`：表头改为 单位/代号/玩家（QQ 名）/行动/目标/原文/状态/结算备注；
+  代号旁标"（卡未对上）"；玩家一列取不到时显示"—"并给提示；`services/engine.js` 加 `listUnitPlayers`
+
+**实测**（测试后端 8101 + 正式库副本）：
+- `/status` 14 条行动全部带出代号与原文（弓御 火焰驹/乐不思蜀、剑御 荀彧/干涉许都、术御 曹植/空花结阵…）+ 群名
+- `/players` 在机器人离线时 7 个职阶全部优雅返回空 + 统一提示文案
+
+**待定 / 后续**：
+- 要不要把"发公告的人"在 AI 代收时就写进行动行（`engine_actions` 加 `sender_qq/sender_name`）——
+  那样 QQ 名不依赖机器人在线、还能看出公告是谁发的；需要加字段 + 改 agent.mjs 的登记路径
+- 要不要把"上面那张表（指令直提）"和"引擎登记"合并成一张表（现在数据源是两个表，互不覆盖）
+
+
 ## 2026-09-16（夜 14，登录 QQ 全链路修通：三个真 bug + 一个防火墙骚扰）
 
 **用户实测反馈**："NapCat 已启动，等二维码出现…"但永远不出码；另外"每次都有安全中心弹窗，很烦"。

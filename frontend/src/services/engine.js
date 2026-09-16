@@ -30,6 +30,12 @@ export function listRulings(campaignId) {
   return request(`${API_BASE}/engine/rulings?campaignId=${campaignId}`)
 }
 
+// 职阶群玩家（把"哪个职阶是谁"查出来）：{ players: { 剑: { groupName, members:[{qq,name}] } }, botOnline }
+// 数据源是机器人所在职阶群的成员列表，机器人没上线时 members 为空
+export function listUnitPlayers(campaignId) {
+  return request(`${API_BASE}/engine/players?campaignId=${campaignId}`)
+}
+
 // 裁决：填结论关闭一项
 export function resolveRuling(id, resolution) {
   return request(`${API_BASE}/engine/rulings/resolve`, {
